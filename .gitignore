@@ -1,0 +1,22 @@
+# Logs
+*.log
+
+# Backups
+*.tar
+*.tar.gz
+*.gz
+backups/
+
+# SSH keys
+*.key
+*.pem
+id_rsa
+id_ed25519
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+*.swp
