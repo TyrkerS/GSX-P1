@@ -1,43 +1,74 @@
 #!/bin/bash
 set -euo pipefail
 
+
 USER_NAME="gsx"
-BASE_DIR="/opt/greendevcorp"
+BASE_DIR="/opt/P1"
 
-echo "[1] Updating system..."
-sudo apt update
+log() {
+    echo
+    echo "==> $1"
+}
 
-echo "[2] Installing required packages..."
-sudo apt install -y \
-    sudo \
-    openssh-server \
-    git \
-    vim \
-    curl \
-    htop \
-    tree
+update_system() {
+    log "Updating package index..."
+    sudo apt update -y
+}
 
-echo "[3] Ensuring user is in sudo group..."
-if ! id -nG "$USER_NAME" | grep -qw sudo; then
-    sudo usermod -aG sudo "$USER_NAME"
-    echo "User added to sudo group."
-else
-    echo "User already in sudo group."
-fi
+install_packages() {
+    log "Installing required packages..."
+    sudo apt install -y \
+        sudo \
+        openssh-server \
+        git \
+        vim \
+        curl \
+        htop \
+        tree
+}
 
-echo "[4] Enabling and starting SSH..."
-sudo systemctl enable ssh
-sudo systemctl restart ssh
+configure_sudo() {
+    log "Ensuring user has sudo privileges..."
 
-echo "[5] Hardening SSH configuration..."
-sudo sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-sudo sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    if ! id -nG "$USER_NAME" | grep -qw sudo; then
+        sudo usermod -aG sudo "$USER_NAME"
+        echo "User added to sudo group."
+    else
+        echo "User already in sudo group."
+    fi
+}
 
-sudo systemctl restart ssh
+configure_ssh() {
+    log "Configuring SSH service..."
 
-echo "[6] Creating administrative directory structure..."
-sudo mkdir -p $BASE_DIR/{scripts,backups,logs,docs}
-sudo chown -R "$USER_NAME":"$USER_NAME" $BASE_DIR
+    sudo systemctl enable ssh
+    sudo systemctl start ssh
 
-echo "=== Bootstrap Complete ==="
+    # SSH configuration
+    sudo sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+    sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    sudo sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+
+    sudo systemctl restart ssh
+}
+
+create_structure() {
+    log "Creating administrative directory structure..."
+
+    sudo mkdir -p "$BASE_DIR"/{scripts,backups,logs,docs}
+    sudo chown -R "$USER_NAME":"$USER_NAME" "$BASE_DIR"
+}
+
+main() {
+    log "Starting GreenDevCorp Week 1 bootstrap..."
+
+    update_system
+    install_packages
+    configure_sudo
+    configure_ssh
+    create_structure
+
+    log "Bootstrap completed successfully."
+}
+
+main
