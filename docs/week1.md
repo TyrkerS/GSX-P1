@@ -1,6 +1,6 @@
 # Week 1 -- Decisions de Disseny i Reflexió
 
-## 1. Objectiu de la Week 1
+## 1. Objectiu de la setmana 1
 
 L'objectiu principal d'aquesta setmana ha estat establir una base
 sòlida, segura i reproduïble per al servidor Debian del projecte
