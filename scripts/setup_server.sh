@@ -1,9 +1,17 @@
 #!/bin/bash
 set -euo pipefail
 
-
 USER_NAME="gsx"
 BASE_DIR="/opt/P1"
+
+# --------------------------------------------------
+# Comprovacio root
+# --------------------------------------------------
+if [[ "$EUID" -ne 0 ]]; then
+  echo "This script must be run as root."
+  echo "Use: su -  OR  sudo ./bootstrap.sh"
+  exit 1
+fi
 
 log() {
     echo
@@ -12,12 +20,12 @@ log() {
 
 update_system() {
     log "Updating package index..."
-    sudo apt update -y
+    apt update -y
 }
 
 install_packages() {
     log "Installing required packages..."
-    sudo apt install -y \
+    apt install -y \
         sudo \
         openssh-server \
         git \
@@ -31,7 +39,7 @@ configure_sudo() {
     log "Ensuring user has sudo privileges..."
 
     if ! id -nG "$USER_NAME" | grep -qw sudo; then
-        sudo usermod -aG sudo "$USER_NAME"
+        /usr/sbin/usermod -aG sudo "$USER_NAME"
         echo "User added to sudo group."
     else
         echo "User already in sudo group."
@@ -41,22 +49,22 @@ configure_sudo() {
 configure_ssh() {
     log "Configuring SSH service..."
 
-    sudo systemctl enable ssh
-    sudo systemctl start ssh
+    systemctl enable ssh
+    systemctl start ssh
 
-    # SSH configuration
-    sudo sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
-    sudo sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
-    sudo sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+    # Harden SSH configuration
+    sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
+    sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
+    sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 
-    sudo systemctl restart ssh
+    systemctl restart ssh
 }
 
 create_structure() {
     log "Creating administrative directory structure..."
 
-    sudo mkdir -p "$BASE_DIR"/{scripts,backups,logs,docs}
-    sudo chown -R "$USER_NAME":"$USER_NAME" "$BASE_DIR"
+    mkdir -p "$BASE_DIR"/{scripts,backups,logs,docs}
+    chown -R "$USER_NAME":"$USER_NAME" "$BASE_DIR"
 }
 
 main() {

@@ -1,168 +1,196 @@
-# Pràctica 1 -- Gestió de Sistemes i Xarxes
-
-## Objectiu
-
-Aquest repositori conté la configuració automatitzada del servidor
-Debian per a la Week 1 del projecte GreenDevCorp.
-
-L'objectiu és establir una base segura, reproduïble i automatitzada que
-permeti:
-
--   Accés remot segur mitjançant SSH
--   Escalada de privilegis controlada amb sudo
--   Estructura administrativa definida
--   Verificació automàtica de la configuració
--   Preparació per a futures ampliacions (Weeks 2--6)
-
-Tota la configuració del sistema es realitza mitjançant scripts.
+# Pràctica 1 --- Gestió de Sistemes i Xarxes
 
 ------------------------------------------------------------------------
 
-## Arquitectura bàsica
+##  Objectiu
 
-El servidor s'executa en una màquina virtual VirtualBox.
+Aquest projecte configura un servidor Debian de forma automatitzada
 
--   Mode de xarxa: NAT
--   Port forwarding: Host 2222 → Guest 22
--   Sistema operatiu: Debian (instal·lació mínima)
--   Usuari administratiu: gsx
+Tot el sistema es construeix mitjançant scripts.
 
 ------------------------------------------------------------------------
 
-## Configuració de xarxa (VirtualBox)
+##  Requisits previs
 
-1.  Obrir configuració de la VM
+-   VirtualBox instal·lat
+-   ISO de Debian (amd64 netinst o full)
+-   Connexió a Internet
+-   Accés a terminal al sistema host (Linux o Windows amb SSH)
+
+------------------------------------------------------------------------
+
+##  Crear la màquina virtual
+
+-   Nom: `debian-gsx`
+-   2 GB RAM
+-   1 CPU
+-   Disc 20 GB (dinàmic)
+-   Instal·lació **Unattended Install**
+-   Usuari: `gsx`
+-   Password coneguda
+-   Hostname: `debian-gsx`
+
+Finalitzar instal·lació.
+
+------------------------------------------------------------------------
+
+##  Configurar port forwarding (OBLIGATORI)
+
+Amb la VM apagada:
+
+1.  VirtualBox → Configuració
 2.  Xarxa → Adaptador 1
 3.  Mode: NAT
-4.  Reenvío de puertos:
+4.  Reenvío de puertos
+
+Afegir:
 
   Nom   Protocol   Port host   Port convidat
   ----- ---------- ----------- ---------------
   SSH   TCP        2222        22
 
-Això permet que el port 2222 del sistema host redirigeixi al port 22 del
-servidor Debian.
+Això permet connectar des del host al servidor.
 
 ------------------------------------------------------------------------
 
-## Configuració de clau SSH (si no existeix)
+##  Instal·lar i activar SSH dins la VM
 
-Si el sistema host no disposa d'una clau SSH:
+ La instal·lació Unattended no instal·la OpenSSH ni afegeix al usuari a sudo.
 
-    ssh-keygen
+Caldrà entrar a la VM.
 
-Acceptar la ubicació per defecte.
+Convertir-se en root:
 
-Això generarà:
+    su -
 
--   Clau privada (\~/.ssh/id_ed25519)
--   Clau pública (\~/.ssh/id_ed25519.pub)
+Després executar:
 
-------------------------------------------------------------------------
-
-## Registrar la clau pública al servidor
-
-Des del sistema host:
-
-    ssh-copy-id -p 2222 gsx@localhost
-
-Si ssh-copy-id no està disponible, copiar manualment el contingut de la
-clau pública al fitxer:
-
-    ~/.ssh/authorized_keys
-
-del servidor.
+    apt update
+    apt install openssh-server -y
+    systemctl enable ssh
+    systemctl start ssh
 
 ------------------------------------------------------------------------
 
-## Connexió al servidor
-
-Des del sistema host:
+##  Provar connexió des del sistema host
 
     ssh gsx@localhost -p 2222
 
-Configuració aplicada pel bootstrap:
-
--   Autenticació per clau pública
--   PasswordAuthentication desactivat
--   Login de root desactivat
--   Ús de sudo per tasques administratives
+Si demana password i entra → correcte.
 
 ------------------------------------------------------------------------
 
-## Instal·lació des de zero (flux complet)
+##  Generar clau SSH al host
 
-1.  Instal·lar Debian (instal·lació mínima)
-2.  Seleccionar "OpenSSH Server" durant la instal·lació
-3.  Clonar el repositori
-4.  Executar:
+    ssh-keygen
 
-```{=html}
-<!-- -->
-```
-    ./scripts/bootstrap.sh
+Acceptar opcions per defecte (ENTER a tot).
 
-5.  Verificar configuració:
+Copiar la clau al servidor:
 
-```{=html}
-<!-- -->
-```
-    ./scripts/verify_setup.sh
+    ssh-copy-id -p 2222 gsx@localhost
 
-Si retorna 0, el sistema està correctament configurat.
+Provar connexió:
+
+    ssh gsx@localhost -p 2222
 
 ------------------------------------------------------------------------
 
-## Estructura del projecte
+##  Enviar el repositori a la VM
 
-    scripts/
-        setup_server.sh
-        verify_setup.sh
-        backup.sh
-
-    docs/
-        design_decisions.md
-        week1.md
-
-    .gitignore
-    README.md
-
-### Descripció dels scripts
-
--   **bootstrap.sh** → Instal·la paquets, configura sudo, endureix SSH i
-    crea l'estructura administrativa.
--   **verify_setup.sh** → Comprova automàticament que el sistema està
-    correctament configurat.
--   **backup.sh** → Script per empaquetar dades sensibles preservant
-    permisos.
+    scp -P 2222 -r nom-repo gsx@localhost:/home/gsx/
 
 ------------------------------------------------------------------------
 
-## Principis aplicats
+##  Executar configuració automatitzada
+
+    ssh gsx@localhost -p 2222
+    cd nom-repo/scripts
+    su -
+    ./setup_server.sh
+
+Aquest script:
+
+-   Instal·la paquets necessaris
+-   Configura sudo
+-   Endureix SSH
+-   Crea estructura administrativa
+
+------------------------------------------------------------------------
+
+##  Verificar la configuració
+
+    ./verify_setup.sh
+
+Si retorna:
+
+    === Verification Successful ===
+
+i `echo $?` retorna `0`, la configuració és correcta.
+
+------------------------------------------------------------------------
+
+##  Executar backup
+
+Com a root:
+
+    ./backup.sh
+
+Els backups es guarden a:
+
+    /opt/P1/backups
+
+------------------------------------------------------------------------
+
+##  Estructura final del sistema
+
+    /opt/P1/
+        scripts/
+        backups/
+        logs/
+        docs/
+
+------------------------------------------------------------------------
+
+##  Configuració de seguretat aplicada
+
+El bootstrap aplica:
+
+-   `PermitRootLogin no`
+-   `PasswordAuthentication no`
+-   `PubkeyAuthentication yes`
+-   Usuari `gsx` dins del grup `sudo`
+
+------------------------------------------------------------------------
+
+##  Principis aplicats
 
 -   Infraestructura com a codi
 -   Idempotència
 -   Principi de mínim privilegi
--   Automatització abans que configuració manual
--   Separació entre configuració i documentació
+-   Automatització
+-   Separació entre sistema base i configuració del projecte
 
 ------------------------------------------------------------------------
 
-## Verificació
+##  Flux complet resumit
 
-El script `verify_setup.sh`:
-
--   Comprova estat del servei SSH
--   Comprova configuració segura
--   Comprova pertinença al grup sudo
--   Comprova estructura administrativa
-
-Retorna:
-
--   0 → Tot correcte
--   1 → Errors detectats
+1.  Crear VM (Unattended)
+2.  Configurar port forwarding
+3.  Instal·lar OpenSSH manualment
+4.  Provar connexió SSH
+5.  Generar i copiar clau
+6.  Enviar repositori
+7.  Executar `setup_server.sh` com a root
+8.  Executar `verify_setup.sh`
+9.  Executar `backup.sh`
 
 ------------------------------------------------------------------------
 
-Per a més detalls tècnics i decisions de disseny, consultar la carpeta
-`docs/`.
+##  Resultat
+
+El sistema queda:
+
+-   Reproduïble
+-   Segur
+-   Automatitzat
