@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily GreenDevCorp Backup Timer
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+AccuracySec=5m
+
+[Install]
+WantedBy=timers.target
