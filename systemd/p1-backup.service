@@ -1,13 +1,17 @@
 [Unit]
 Description=GreenDevCorp P1 Backup Service
-After=network-online.target
-Wants=network-online.target
+Documentation=https://github.com/usuari/GSX-P1
+# Storage must be mounted before backup runs
+RequiresMountsFor=/mnt/storage
 
 [Service]
 Type=oneshot
-ExecStart=/home/gsx/GSX-P1/scripts/backup.sh
+User=root
+ExecStart=/opt/P1/scripts/Week_5_backup/backup.sh
 StandardOutput=journal
 StandardError=journal
+# Keep journal logs for failed runs visible
+SyslogIdentifier=p1-backup
 
 [Install]
 WantedBy=multi-user.target
