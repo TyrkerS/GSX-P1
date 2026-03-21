@@ -42,6 +42,13 @@ check "Public key authentication enabled" grep -q '^PubkeyAuthentication yes' /e
 check "User is in sudo group" bash -c "id -nG $USER_NAME | grep -qw sudo"
 
 # ------------------------------
+# SSH key authentication
+# ------------------------------
+check "authorized_keys file exists"    test -f "/home/$USER_NAME/.ssh/authorized_keys"
+check "authorized_keys is non-empty"   test -s "/home/$USER_NAME/.ssh/authorized_keys"
+check ".ssh dir permissions are 700"   bash -c '[[ $(stat -c %a /home/'"$USER_NAME"'/.ssh) == "700" ]]'
+
+# ------------------------------
 # Automatic updates
 # ------------------------------
 check "unattended-upgrades installed" dpkg -l unattended-upgrades

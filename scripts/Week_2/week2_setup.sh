@@ -118,6 +118,39 @@ verify_services() {
 }
 
 # --------------------------------------------------
+# Configurar journald (límits de logs)
+# --------------------------------------------------
+
+configure_journald() {
+    log "Configuring journald log limits..."
+
+    local CONF_DIR="/etc/systemd/journald.conf.d"
+    local CONF_FILE="$CONF_DIR/limits.conf"
+
+    mkdir -p "$CONF_DIR"
+
+    # Idempotent: only write if not already configured
+    if [[ ! -f "$CONF_FILE" ]]; then
+        cat > "$CONF_FILE" << 'EOF'
+[Journal]
+# Limit total journal disk usage
+SystemMaxUse=200M
+# Keep each individual journal file small
+SystemMaxFileSize=20M
+# Delete logs older than 30 days
+MaxRetentionSec=30day
+# Compress journal files
+Compress=yes
+EOF
+        echo "journald limits config written to $CONF_FILE"
+    else
+        echo "journald limits config already exists — skipping."
+    fi
+
+    systemctl restart systemd-journald
+}
+
+# --------------------------------------------------
 # MAIN
 # --------------------------------------------------
 
@@ -128,6 +161,7 @@ main() {
     configure_nginx
     configure_nginx_autorestart
     install_systemd_units
+    configure_journald
     verify_services
 
     log "Week 2 setup completed successfully."
