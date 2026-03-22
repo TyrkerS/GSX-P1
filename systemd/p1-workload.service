@@ -1,0 +1,28 @@
+[Unit]
+Description=GreenDevCorp CPU Workload Service (Week 3 demo)
+Documentation=Used to demonstrate process resource limits and cgroup enforcement.
+After=multi-user.target
+
+[Service]
+Type=simple
+User=gsx
+ExecStart=/opt/P1/scripts/Week_3/workload.sh
+
+# ── Resource limits (cgroup enforcement) ──────────────────────────────────────
+# Limit to 30% of one CPU core
+CPUQuota=30%
+# Limit to 64 MB RAM
+MemoryMax=64M
+# Kill the service if it exceeds the memory limit (don't let it swap)
+MemorySwapMax=0
+
+# ── Restart policy ────────────────────────────────────────────────────────────
+# Do NOT auto-restart — this is a demo service, not a production service
+Restart=no
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=p1-workload
+
+[Install]
+WantedBy=multi-user.target
