@@ -1,9 +1,11 @@
 #!/bin/bash
+# resource_limit_demo.sh — Demostració de límits de recursos amb cgroups
+# Inicia servei de workload (limitat a CPU i memòria), mostra estat, verifica límits, observa ús real
 set -euo pipefail
 
 SERVICE="p1-workload.service"
 
-echo "=== RESOURCE LIMIT DEMO ==="
+echo "=== RESOURCE LIMITS DEMONSTRATION ==="
 echo
 
 echo "1) Starting workload service..."
@@ -31,4 +33,4 @@ echo "6) Stopping workload service..."
 sudo systemctl stop $SERVICE
 
 echo
-echo "=== DEMO COMPLETED ==="
+echo "=== DEMONSTRATION COMPLETED ==="

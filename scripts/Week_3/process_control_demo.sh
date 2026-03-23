@@ -1,7 +1,9 @@
 #!/bin/bash
+# process_control_demo.sh — Demostració de control de processos amb senyals
+# Crea une càrrega, mostra PID, pausa amb SIGSTOP, reprèn amb SIGCONT, canvia prioritat, envia senyals
 set -euo pipefail
 
-echo "=== PROCESS CONTROL DEMO ==="
+echo "=== PROCESS CONTROL DEMONSTRATION ==="
 echo
 
 echo "1) Creating CPU workload..."
@@ -12,7 +14,7 @@ echo "Process started with PID: $PID"
 sleep 2
 
 echo
-echo "2) Showing top CPU processes..."
+echo "2) Showing processes with highest CPU usage..."
 ps -eo pid,ppid,user,ni,%cpu,%mem,etime,cmd --sort=-%cpu | head -n 5
 sleep 2
 
@@ -55,11 +57,11 @@ ps -p $PID -o pid,stat,%cpu,cmd 2>/dev/null || true
 
 echo
 echo "8) Sending SIGUSR2 again (resume)..."
-kill -SIGUSR2 $PID 2>/dev/null || echo "  Process already gone"
+kill -SIGUSR2 $PID 2>/dev/null || echo "  Procés ja desaparegut"
 sleep 2
 
 echo
-echo "9) Terminating process with SIGTERM (graceful)..."
+echo "9) Stopping process with SIGTERM (gracefully)..."
 kill -TERM $PID 2>/dev/null || true
 sleep 2
 
@@ -67,8 +69,8 @@ if ps -p $PID > /dev/null 2>&1; then
     echo "Process still running, forcing kill with SIGKILL..."
     kill -KILL $PID
 else
-    echo "Process terminated gracefully."
+    echo "Process stopped gracefully."
 fi
 
 echo
-echo "=== DEMO COMPLETED ==="
+echo "=== DEMONSTRATION COMPLETED ==="

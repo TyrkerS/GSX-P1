@@ -1,4 +1,6 @@
 #!/bin/bash
+# verify_week5.sh — Script de verificació complet de Week 5
+# Comprova: /mnt/storage muntat, contrasenya accessible, GPG instal·lat, fitxers de backup existeixen, prova de restauració
 set -euo pipefail
 
 MOUNT_POINT="/mnt/storage"
@@ -26,27 +28,27 @@ echo ""
 
 echo "--- Storage ---"
 check "Mount point exists"              test -d "$MOUNT_POINT"
-check "Storage mounted on $MOUNT_POINT" mountpoint -q "$MOUNT_POINT"
+check "Storage mounted at $MOUNT_POINT" mountpoint -q "$MOUNT_POINT"
 check "fstab entry uses UUID"           grep -P "^UUID=\S+\s+$MOUNT_POINT" /etc/fstab
 check "Backup directory exists"         test -d "$BACKUP_DIR"
 
 
 echo ""
 echo "--- Encryption ---"
-check "GPG is installed"                command -v gpg
+check "GPG installed"                command -v gpg
 check "Passphrase file exists"          test -f "$PASSPHRASE_FILE"
-check "Passphrase file is chmod 600"    bash -c '[[ $(stat -c %a '"$PASSPHRASE_FILE"') == "600" ]]'
-check "Passphrase file owned by root"   bash -c '[[ $(stat -c %U '"$PASSPHRASE_FILE"') == "root" ]]'
+check "Passphrase file has 600 permissions"    bash -c '[[ $(stat -c %a "'"$PASSPHRASE_FILE"'") == "600" ]]'
+check "Passphrase file owned by root"   bash -c '[[ $(stat -c %U "'"$PASSPHRASE_FILE"'") == "root" ]]'
 
 
 echo ""
 echo "--- Backup files ---"
 LATEST=$(ls -1t "$BACKUP_DIR"/backup_*.tar.gz.gpg "$BACKUP_DIR"/backup_*.tar.gz 2>/dev/null | head -n 1 || true)
 check "At least one backup file exists" test -n "${LATEST:-}"
-check "Latest backup file is non-empty" test -s "${LATEST:-/dev/null}"
+check "Most recent backup file is not empty" test -s "${LATEST:-/dev/null}"
 
 if [[ -n "${LATEST:-}" ]]; then
-    echo "       Latest: $LATEST ($(du -sh "$LATEST" | cut -f1))"
+    echo "       Most recent: $LATEST ($(du -sh "$LATEST" | cut -f1))"
 fi
 
 
@@ -55,12 +57,12 @@ echo "       Daily backups present: $DAILY_COUNT"
 
 
 echo ""
-echo "--- Systemd timer ---"
-check "Timer unit is enabled"           systemctl is-enabled "$TIMER_NAME"
+echo "--- systemd timer ---"
+check "Timer unit enabled"           systemctl is-enabled "$TIMER_NAME"
 check "Timer unit is active"            systemctl is-active  "$TIMER_NAME"
 
 NEXT=$(systemctl show "$TIMER_NAME" -p NextElapseUSecRealtime 2>/dev/null | cut -d= -f2 || true)
-[[ -n "$NEXT" ]] && echo "       Next run: $(systemd-analyze calendar daily 2>/dev/null | grep 'Next elapse' || echo 'see: systemctl list-timers')"
+[[ -n "$NEXT" ]] && echo "       Next execution: (see: systemctl list-timers)"
 
 echo ""
 echo "--- Restore test ---"
@@ -74,25 +76,25 @@ if [[ -n "${LATEST:-}" ]]; then
             --passphrase-file "$PASSPHRASE_FILE" \
             --decrypt "$LATEST" \
         | tar --preserve-permissions --same-owner -xzf - -C "$RESTORE_DIR" \
-            && echo "[OK]    Encrypted restore extraction succeeded" \
+            && echo "[OK]    Encrypted restore extraction successful" \
             || { echo "[ERROR] Encrypted restore extraction failed"; ERRORS=$((ERRORS + 1)); }
     else
         tar --preserve-permissions --same-owner -xzf "$LATEST" -C "$RESTORE_DIR" \
-            && echo "[OK]    Plain restore extraction succeeded" \
+            && echo "[OK]    Plain restore extraction successful" \
             || { echo "[ERROR] Plain restore extraction failed"; ERRORS=$((ERRORS + 1)); }
     fi
 
     FILE_COUNT=$(find "$RESTORE_DIR" -type f | wc -l)
-    check "Restored content is non-empty (files found: $FILE_COUNT)" test "$FILE_COUNT" -gt 0
+    check "Restored content is not empty (files found: $FILE_COUNT)" test "$FILE_COUNT" -gt 0
 
     rm -rf "$RESTORE_DIR"
 else
-    echo "[SKIP]  No backup file found — skipping restore test"
+    echo "[SKIP]  No backup files found — skipping restore test"
 fi
 
 echo ""
 if [[ "$ERRORS" -eq 0 ]]; then
-    echo "=== VERIFICATION SUCCESSFUL ==="
+    echo "=== VERIFICATION COMPLETED SUCCESSFULLY ==="
     exit 0
 else
     echo "=== VERIFICATION FAILED: $ERRORS error(s) ==="

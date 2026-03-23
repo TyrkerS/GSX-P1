@@ -1,4 +1,6 @@
 #!/bin/bash
+# verify_setup.sh — Script de verificació de Week 1
+# Comprova: SSH, sudo, authorized_keys, actualitzacions automàtiques, estructura de directoris, repositori Git
 set -euo pipefail
 
 USER_NAME="gsx"
@@ -25,56 +27,49 @@ check() {
     fi
 }
 
-# ------------------------------
-# SSH checks
-# ------------------------------
 check "SSH service is running" systemctl is-active --quiet ssh
 check "SSH service enabled at boot" systemctl is-enabled --quiet ssh
-
 check "SSH port is set correctly" grep -q "^Port $SSH_PORT" /etc/ssh/sshd_config
 check "Root login disabled" grep -q '^PermitRootLogin no' /etc/ssh/sshd_config
 check "Password authentication disabled" grep -q '^PasswordAuthentication no' /etc/ssh/sshd_config
 check "Public key authentication enabled" grep -q '^PubkeyAuthentication yes' /etc/ssh/sshd_config
 
-# ------------------------------
-# Sudo check
-# ------------------------------
+# --- Sudo check ---
+echo ""
+echo "--- Sudo ---"
 check "User is in sudo group" bash -c "id -nG $USER_NAME | grep -qw sudo"
 
-# ------------------------------
-# SSH key authentication
-# ------------------------------
+# --- SSH key authentication ---
+echo ""
+echo "--- SSH key authentication ---"
 check "authorized_keys file exists"    test -f "/home/$USER_NAME/.ssh/authorized_keys"
 check "authorized_keys is non-empty"   test -s "/home/$USER_NAME/.ssh/authorized_keys"
 check ".ssh dir permissions are 700"   bash -c '[[ $(stat -c %a /home/'"$USER_NAME"'/.ssh) == "700" ]]'
 
-# ------------------------------
-# Automatic updates
-# ------------------------------
+# --- Automatic updates ---
+echo ""
+echo "--- Automatic updates ---"
 check "unattended-upgrades installed" dpkg -l unattended-upgrades
 check "unattended-upgrades service active" systemctl is-active --quiet unattended-upgrades
 
-# ------------------------------
-# Directory structure
-# ------------------------------
+# --- Directory structure ---
+echo ""
+echo "--- Directory structure ---"
 check "Base directory exists" test -d "$BASE_DIR"
 check "Scripts directory exists" test -d "$BASE_DIR/scripts"
 check "Docs directory exists" test -d "$BASE_DIR/docs"
 check "Logs directory exists" test -d "$BASE_DIR/logs"
-
 check "Backup directory exists" test -d "$BACKUP_DIR"
 check "ETC config directory exists" test -d "$ETC_DIR"
 
-# ------------------------------
-# Git repository check
-# ------------------------------
+# --- Git repository check ---
+echo ""
+echo "--- Git Repository ---"
 check "Git repository initialized" test -d "$BASE_DIR/.git"
-
 check "Baseline commit exists" bash -c "cd $BASE_DIR && git log --oneline | grep -q 'Baseline administrative structure'"
 
-# ------------------------------
-# Final result
-# ------------------------------
+# --- Final result ---
+echo
 echo
 if [ "$ERRORS" -eq 0 ]; then
     echo "=== Verification Successful ==="

@@ -23,9 +23,9 @@ Identificar i controlar processos que consumeixen recursos excessius, entendre e
 
 | | SIGTERM (15) | SIGKILL (9) |
 |--|--------------|-------------|
-| El procés pot ignorar-lo | ✅ Sí | ❌ No |
-| Permet neteja (flush, close) | ✅ Sí | ❌ No |
-| Garantia de mort | ❌ No | ✅ Sí |
+| El procés pot ignorar-lo | Sí | No |
+| Permet neteja (flush, close) | Sí | No |
+| Garantia de mort | No | Sí |
 
 **Estratègia correcta**: primer SIGTERM (dona temps al procés per acabar net), esperar un interval, i si segueix actiu, enviar SIGKILL.
 

@@ -1,4 +1,6 @@
 #!/bin/bash
+# setup_users.sh — Creació de grup greendevcorp i usuaris de desenvolupament
+# Crea 4 usuaris (dev1-dev4) amb contrasenyes aleatòries, força canvi en primer login, assigna al grup
 set -euo pipefail
 
 GROUP="greendevcorp"
@@ -17,7 +19,7 @@ for USER in "${USERS[@]}"; do
     if id "$USER" &>/dev/null; then
         echo "[$USER] Already exists — skipping."
     else
-        # Generate a random 16-char password (never hardcode!)
+        # Generate random 16-character password (never hardcode!)
         PASS=$(tr -dc 'A-Za-z0-9!@#%^&*' < /dev/urandom | head -c 16)
 
         useradd \
@@ -28,7 +30,7 @@ for USER in "${USERS[@]}"; do
 
         echo "$USER:$PASS" | chpasswd
 
-        # Force password change on first login (least privilege)
+        # Force password change on first login (less privileges)
         chage -d 0 "$USER"
 
         echo "[$USER] Created  password: $PASS  (change on first login)"
@@ -37,5 +39,5 @@ done
 
 echo "============================================"
 echo ""
-echo "Users created. Store passwords in a password manager."
-echo "Users will be forced to change password on first login."
+echo "Users created. Store the passwords in a password manager."
+echo "Users will need to change password on first login."

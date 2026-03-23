@@ -1,4 +1,6 @@
 #!/bin/bash
+# restore.sh — Script de restauració de backups
+# Accepta fitxer de backup (encriptat o pla), demana contrasenya si és necessari, desencripta, extreu amb permisos preservats
 set -euo pipefail
 
 PASSPHRASE_FILE="/etc/backup.passphrase"
@@ -7,7 +9,7 @@ BACKUP_FILE="${1:-}"
 RESTORE_DIR="${2:-/tmp/restore_test}"
 
 if [[ -z "$BACKUP_FILE" ]]; then
-    echo "Usage: $0 <backup_file> [restore_dir]"
+    echo "Usage: $0 <backup_file> [restore_directory]"
     echo ""
     echo "Examples:"
     echo "  $0 /mnt/storage/backups/backup_2026-03-19_10-00-00.tar.gz.gpg"
@@ -20,12 +22,13 @@ fi
 
 echo "=== RESTORE TEST ==="
 echo "Source:      $BACKUP_FILE"
-echo "Destination: $RESTORE_DIR"
+echo "Destination:  $RESTORE_DIR"
 echo ""
 
 rm -rf "$RESTORE_DIR"
 mkdir -p "$RESTORE_DIR"
 
+# Detect if backup is encrypted (.gpg extension) or plain
 if [[ "$BACKUP_FILE" == *.gpg ]]; then
     echo "Detected encrypted backup — decrypting..."
     [[ -f "$PASSPHRASE_FILE" ]] \
@@ -56,10 +59,10 @@ ls -lh "$RESTORE_DIR"
 
 FILE_COUNT=$(find "$RESTORE_DIR" -type f | wc -l)
 echo ""
-echo "Total files restored: $FILE_COUNT"
+echo "Total restored files: $FILE_COUNT"
 
 if [[ "$FILE_COUNT" -eq 0 ]]; then
-    echo "ERROR: Restore appears empty!" >&2
+    echo "ERROR: The restore appears to be empty!" >&2
     exit 1
 fi
 

@@ -1,4 +1,6 @@
 #!/bin/bash
+# setup_storage.sh — Configuració de d'emmagatzemament extern
+# Crea particions en disc, crea filesystem ext4, munta a /mnt/storage, afegeix entrada a /etc/fstab amb UUID
 set -euo pipefail
 
 DISK="${1:-/dev/sdb}"
@@ -6,7 +8,7 @@ PARTITION="${DISK}1"
 MOUNT_POINT="/mnt/storage"
 FS_TYPE="ext4"
 
-echo "=== WEEK 5 STORAGE SETUP ==="
+echo "=== WEEK 5 STORAGE CONFIGURATION ==="
 echo "Disk: $DISK"
 echo "Partition: $PARTITION"
 echo "Mount point: $MOUNT_POINT"
@@ -14,11 +16,11 @@ echo
 
 if [[ $EUID -ne 0 ]]; then
     echo "This script must be run as root."
-    echo "Use: sudo ./setup_storage.sh /dev/sdb"
+    echo "Usage: sudo ./setup_storage.sh /dev/sdb"
     exit 1
 fi
 
-# Check disk exists
+# Check that the disk exists
 if [[ ! -b "$DISK" ]]; then
     echo "ERROR: Disk $DISK does not exist."
     exit 1
@@ -51,7 +53,7 @@ UUID=$(blkid -s UUID -o value "$PARTITION")
 echo "UUID=$UUID"
 
 echo
-echo "5) Adding entry to /etc/fstab if missing..."
+echo "5) Adding fstab entry if missing..."
 if ! grep -q "$UUID" /etc/fstab; then
     echo "UUID=$UUID $MOUNT_POINT $FS_TYPE defaults 0 2" >> /etc/fstab
 else
@@ -69,4 +71,4 @@ echo
 df -h | grep "$MOUNT_POINT" || true
 
 echo
-echo "=== STORAGE SETUP COMPLETED ==="
+echo "=== STORAGE CONFIGURATION COMPLETED ==="

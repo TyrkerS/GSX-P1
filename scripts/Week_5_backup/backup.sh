@@ -1,7 +1,9 @@
 #!/bin/bash
+# backup.sh — Script de backup complet a  emmagatzematge remot
+# Crea fitxers tar.gz.gpg encriptats amb contrasenya, implementa rotació de backups (7 diaris, 4 setmanals), comprova muntatge, registra logs
 set -euo pipefail
 
-#  Configuration 
+#  Configuració
 SOURCE="/home"                          
 DEST="/mnt/storage/backups"            
 PASSPHRASE_FILE="/etc/backup.passphrase" 
@@ -12,14 +14,14 @@ KEEP_WEEKLY=4
 ENCRYPT=true
 if [[ "${1:-}" == "--no-encrypt" ]]; then
     ENCRYPT=false
-    echo "WARNING: running without encryption (testing mode)" >&2
+    echo "WARNING: execution without encryption (test mode)" >&2
 fi
 
-#  Helpers 
+#  Funcions auxiliars
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*"; }
 die() { log "ERROR: $*" >&2; exit 1; }
 
-#  Pre-flight checks 
+#  Pre-flight checks
 [[ $EUID -eq 0 ]] || die "Must be run as root (needed for --same-owner)"
 [[ -d "$SOURCE" ]]  || die "Source directory does not exist: $SOURCE"
 mountpoint -q /mnt/storage || die "/mnt/storage is not mounted"
@@ -32,7 +34,7 @@ fi
 
 mkdir -p "$DEST"
 
-#  Backup 
+#  Backup
 DATE=$(date +%F_%H-%M-%S)
 WEEKDAY=$(date +%u)  # 7 = Sunday
 
@@ -82,15 +84,16 @@ ls -1t "$DEST"/backup_*.${EXT} 2>/dev/null \
     | tail -n +"$((KEEP_DAILY + 1))" \
     | xargs --no-run-if-empty rm -v --
 
+# Create weekly copy on Sunday
 if [[ "$WEEKDAY" -eq 7 ]]; then
     WEEKLY_DIR="$DEST/weekly"
     mkdir -p "$WEEKLY_DIR"
     cp "$BACKUP_FILE" "$WEEKLY_DIR/"
-    log "Weekly copy stored: $WEEKLY_DIR/$(basename "$BACKUP_FILE")"
+    log "Weekly backup stored: $WEEKLY_DIR/$(basename "$BACKUP_FILE")"
 
     log "Rotating weekly backups (keeping $KEEP_WEEKLY)..."
     ls -1t "$WEEKLY_DIR"/backup_*.${EXT} 2>/dev/null \
-        | tail -n +"$((KEEP_WEEKLY + 1))" \
+        | tail -n "$((KEEP_WEEKLY + 1))" \
         | xargs --no-run-if-empty rm -v --
 fi
 

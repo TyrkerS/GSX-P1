@@ -46,7 +46,7 @@ install_packages() {
 }
 
 # --------------------------------------------------
-# Configurar Nginx
+# Configuració de Nginx
 # --------------------------------------------------
 
 configure_nginx() {
@@ -71,7 +71,7 @@ EOF
 }
 
 # --------------------------------------------------
-# Instal·lar systemd units (backup service + timer)
+# Instal·lar unitats systemd (servei backup + timer)
 # --------------------------------------------------
 
 install_systemd_units() {

@@ -1,4 +1,6 @@
 #!/bin/bash
+# setup_passphrase.sh — Generació de contrasenya aleatòria per a encriptació de backups
+# Crea /etc/backup.passphrase amb 32 caràcters, estableix permisos 600, mostra la contrasenya per copiar
 set -euo pipefail
 
 PASSPHRASE_FILE="/etc/backup.passphrase"
@@ -22,10 +24,10 @@ chown root:root "$PASSPHRASE_FILE"
 
 echo "Passphrase file created: $PASSPHRASE_FILE"
 echo ""
-echo "=== IMPORTANT: Store this passphrase somewhere safe! ==="
+echo "=== IMPORTANT: Store this passphrase in a secure location! ==="
 echo "    Without it, encrypted backups cannot be restored."
 echo ""
 echo "Passphrase: $PASSPHRASE"
 echo ""
-echo "Recommended: copy this passphrase to a password manager or"
-echo "secure offline location NOW, before closing this terminal."
+echo "Recommended: Copy this passphrase to a password manager or"
+echo "to a secure offline location NOW, before closing this terminal."

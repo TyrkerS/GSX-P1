@@ -1,4 +1,7 @@
 #!/bin/bash
+# setup_nfs.sh — Configuració de NFS per a backups en xarxa
+# Mode servidor: instal·la nfs-kernel-server i exporta /mnt/storage/backups
+# Mode client: munta el backup remot en /mnt/nfs_backups
 set -euo pipefail
 
 EXPORT_DIR="/mnt/storage/backups"
@@ -21,7 +24,7 @@ if [[ "$MODE" == "server" ]]; then
     apt-get update -qq
     apt-get install -y nfs-kernel-server
 
-    mountpoint -q /mnt/storage || die "/mnt/storage not mounted. Run setup_storage.sh first."
+    mountpoint -q /mnt/storage || die "/mnt/storage is not mounted. Run setup_storage.sh first."
     mkdir -p "$EXPORT_DIR"
 
     CLIENT_SUBNET="10.0.2.0/24"
@@ -62,7 +65,7 @@ if [[ "$MODE" == "client" ]]; then
         log "$NFS_MOUNT already mounted — skipping temporary test."
     else
         mount -t nfs -o ro "$SERVER_IP:$EXPORT_DIR" "$NFS_MOUNT"
-        log "NFS mount successful. Files visible:"
+        log "Successful NFS mount. Visible files:"
         ls -lh "$NFS_MOUNT" || true
         umount "$NFS_MOUNT"
     fi
@@ -79,7 +82,7 @@ if [[ "$MODE" == "client" ]]; then
     mount -a
 
     log "NFS mount status:"
-    mountpoint -q "$NFS_MOUNT" && echo "Mounted: $NFS_MOUNT" || echo "NOT mounted: $NFS_MOUNT"
+    mountpoint -q "$NFS_MOUNT" && echo "Muntat: $NFS_MOUNT" || echo "NO muntat: $NFS_MOUNT"
 
     log ""
     log "=== NFS CLIENT READY ==="

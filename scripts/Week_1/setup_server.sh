@@ -6,9 +6,9 @@ BASE_DIR="/opt/P1"
 BACKUP_DIR="/var/backups/P1"
 ETC_DIR="/etc/P1"
 SSH_PORT="22222"
-SSH_PUBKEY=""  # set via --ssh-pubkey argument
+SSH_PUBKEY=""  # establert via argument --ssh-pubkey
 
-# Parse optional --ssh-pubkey argument
+# Parseig dels arguments --ssh-pubkey opcionals
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --ssh-pubkey) SSH_PUBKEY="$2"; shift 2 ;;
@@ -17,7 +17,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-# Root check
+# Comprovació de permisos root
 if [[ "$EUID" -ne 0 ]]; then
   echo "Run as root: su - OR sudo ./bootstrap.sh"
   exit 1
@@ -28,13 +28,13 @@ log() {
     echo "==> $1"
 }
 
-# System update
+# Actualització del sistema
 update_system() {
     log "Updating system..."
-    apt update   # -y is not valid for 'update', only for 'install'
+    apt update   # -y no és vàlid per a 'update', només per a 'install'
 }
 
-# Install required packages
+# Instal·lació de paquets requerits
 install_packages() {
     log "Installing required packages..."
     apt install -y \
@@ -47,13 +47,13 @@ install_packages() {
         unattended-upgrades
 }
 
-# Configure automatic updates
+# Configuració de actualitzacions automàtiques
 configure_auto_updates() {
     log "Enabling automatic security updates..."
     dpkg-reconfigure -f noninteractive unattended-upgrades
 }
 
-# Configure sudo
+# Configuració de sudo
 configure_sudo() {
     log "Configuring sudo..."
 
@@ -75,7 +75,7 @@ setup_authorized_keys() {
     chown "$USER_NAME:$USER_NAME" "$SSH_DIR"
 
     if [[ -n "$SSH_PUBKEY" ]]; then
-        # Add key if not already present
+        # Afegir clau si no està present
         if ! grep -qF "$SSH_PUBKEY" "$AUTH_KEYS" 2>/dev/null; then
             echo "$SSH_PUBKEY" >> "$AUTH_KEYS"
             echo "Public key added to $AUTH_KEYS"
@@ -90,19 +90,19 @@ setup_authorized_keys() {
     fi
 }
 
-# Configure SSH
+# Configuració de SSH
 configure_ssh() {
     log "Configuring SSH..."
 
     systemctl enable ssh
     systemctl start ssh
 
-    # Harden SSH
+    # Enfortir la configuració SSH
     sed -i "s/^#\?Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
     sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
     sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 
-    # Only disable password auth if we have a public key installed
+    # Desabilitar autenticació per contrasenya només si tenim una clau pública instal·lada
     if [[ -s "/home/$USER_NAME/.ssh/authorized_keys" ]]; then
         sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
         echo "Password authentication disabled (key installed)."
@@ -115,7 +115,7 @@ configure_ssh() {
     systemctl restart ssh
 }
 
-# Create directory structure
+# Creació d'estructura de directoris
 create_structure() {
     log "Creating directory structure..."
 
@@ -130,7 +130,7 @@ create_structure() {
 }
 
 
-# Initialize Git repository
+# Inicialització del repositori Git
 initialize_git() {
     log "Initializing Git repository in $BASE_DIR"
 
@@ -159,7 +159,7 @@ EOF
 }
 
 
-# Main
+# Funció principal
 main() {
     log "Starting Week 1 bootstrap..."
 

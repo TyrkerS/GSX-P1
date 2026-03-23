@@ -1,4 +1,6 @@
 #!/bin/bash
+# diagnose.sh — Script de diagnòstic del sistema per analitzar processos
+# Ofereix múltiples modes: snapshot (estat ràpid), top (processos més consumidors), tree (arbre de processos), pid (mètriques detallades d'un PID)
 set -euo pipefail
 
 usage() {
@@ -10,9 +12,9 @@ Usage:
   ./diagnose.sh pid <PID>
 
 Commands:
-  snapshot [N]   Quick system snapshot + top CPU/MEM (default N=10)
-  top [N]        Show top CPU and top MEM processes (default N=10)
-  tree           Show process tree (requires pstree -> package psmisc)
+  snapshot [N]   Quick system snapshot + top CPU/MEM (N default=10)
+  top [N]        Show top CPU and top MEM processes (N default=10)
+  tree           Show process tree (requires pstree -> psmisc package)
   pid <PID>      Show detailed metrics for a PID (ps + /proc + I/O)
 
 Examples:
@@ -39,7 +41,7 @@ cmd_snapshot() {
   echo
 
   echo "== vmstat (CPU/IO pressure) =="
-  # r: runnable, b: blocked, bi/bo: IO, us/sy/id: CPU
+  # r: executable, b: blocked, bi/bo: IO, us/sy/id: CPU
   vmstat 1 3
   echo
 
@@ -77,7 +79,7 @@ cmd_pid() {
     exit 1
   fi
 
-  echo "=== BASIC (ps) ==="
+  echo "=== BASIC INFO (ps) ==="
   ps -p "$PID" -o pid,ppid,pgid,sid,user,stat,ni,%cpu,%mem,etime,cmd
   echo
 

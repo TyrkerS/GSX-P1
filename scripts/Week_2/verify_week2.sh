@@ -1,6 +1,6 @@
 #!/bin/bash
-# verify_week2.sh — Week 2 comprehensive verification
-# Checks: Nginx, backup service, backup timer, backup files, journald config.
+# verify_week2.sh — Script de verificació complet de Week 2
+# Comprova: Nginx, servei de backup, timer de backup, fitxers de backup, configuració de journald
 set -euo pipefail
 
 ERRORS=0
@@ -27,43 +27,43 @@ echo ""
 echo "--- Nginx ---"
 check "Nginx installed"               command -v nginx
 check "Nginx enabled at boot"         systemctl is-enabled nginx
-check "Nginx active (running)"        systemctl is-active nginx
-check "Nginx restart policy set"      grep -q "Restart=on-failure" "$NGINX_OVERRIDE"
+check "Nginx is active (running)"        systemctl is-active nginx
+check "Nginx restart policy" grep -q "Restart=on-failure" "$NGINX_OVERRIDE"
 
-# ── Backup service ────────────────────────────────────────────────────────────
+# ── Servei de backup ────────────────────────────────────────────────────────────
 echo ""
 echo "--- Backup service ---"
 check "Backup service unit exists"    test -f "/etc/systemd/system/$BACKUP_SERVICE"
 check "Backup timer unit exists"      test -f "/etc/systemd/system/$BACKUP_TIMER"
 check "Backup timer enabled"          systemctl is-enabled "$BACKUP_TIMER"
-check "Backup timer active"           systemctl is-active  "$BACKUP_TIMER"
+check "Backup timer is active"           systemctl is-active  "$BACKUP_TIMER"
 
-# Verify the timer has a next elapse time (it's actually scheduled)
+# Verify that the timer has a next execution time (is effectively scheduled)
 NEXT=$(systemctl show "$BACKUP_TIMER" -p NextElapseUSecRealtime 2>/dev/null | cut -d= -f2 || true)
 check "Backup timer is scheduled"     test -n "$NEXT"
 
-# ── Backup files ──────────────────────────────────────────────────────────────
+# ── Backup files ──────────────────────────────────────────────────────────
 echo ""
 echo "--- Backup files ---"
 BACKUP_DIR="/var/backups/P1"
 LATEST=$(ls -1t "$BACKUP_DIR"/backup_*.tar.gz* 2>/dev/null | head -n 1 || true)
 check "At least one backup file exists" test -n "${LATEST:-}"
 if [[ -n "${LATEST:-}" ]]; then
-    check "Latest backup is non-empty"  test -s "$LATEST"
-    echo "       Latest: $LATEST"
+    check "Most recent backup is not empty"  test -s "$LATEST"
+    echo "       Most recent: $LATEST"
 fi
 
-# ── Journald / log management ─────────────────────────────────────────────────
+# ── Log management (journald) ─────────────────────────────────────────────────
 echo ""
 echo "--- Log management ---"
 check "journald limits config exists" test -f "$JOURNAL_CONF"
-check "journald SystemMaxUse set"     grep -q "SystemMaxUse" "$JOURNAL_CONF"
-check "journald MaxRetentionSec set"  grep -q "MaxRetentionSec" "$JOURNAL_CONF"
+check "SystemMaxUse configured in journald"     grep -q "SystemMaxUse" "$JOURNAL_CONF"
+check "MaxRetentionSec configured in journald"  grep -q "MaxRetentionSec" "$JOURNAL_CONF"
 
-# ── Result ────────────────────────────────────────────────────────────────────
+# ── Final result ────────────────────────────────────────────────────────────
 echo ""
 if [[ "$ERRORS" -eq 0 ]]; then
-    echo "=== VERIFICATION SUCCESSFUL ==="
+    echo "=== VERIFICATION COMPLETED SUCCESSFULLY ==="
     exit 0
 else
     echo "=== VERIFICATION FAILED: $ERRORS error(s) ==="
