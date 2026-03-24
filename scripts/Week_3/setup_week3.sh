@@ -20,6 +20,10 @@ log "Installing required packages (psmisc for pstree, sysstat for iostat)..."
 apt-get update -qq
 apt-get install -y psmisc sysstat
 
+# Enforce execution bits (vital logic for fresh cloned installs)
+log "Enforcing execution permissions securely..."
+chmod +x "$SCRIPT_DIR"/*.sh
+
 # Install workload service
 log "Installing p1-workload.service..."
 if [[ ! -f "$SYSTEMD_SRC" ]]; then

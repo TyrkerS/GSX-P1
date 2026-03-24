@@ -59,7 +59,7 @@ Només es necessita Git per poder clonar el repositori.
 
 ##  Clonar el repositori al servidor
 
-    git clone https://github.com/usuari/GSX-P1.git
+    git clone https://github.com/TyrkerS/GSX-P1.git
     cd GSX-P1/scripts
     sudo bash ./setup_all.sh
 
