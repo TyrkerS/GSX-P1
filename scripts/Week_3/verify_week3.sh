@@ -25,8 +25,13 @@ echo ""
 # ── Dependencies ──────────────────────────────────────────────────────────────
 echo "--- Dependencies ---"
 check "pstree available (psmisc)"     command -v pstree
-check "iotop available"               command -v iotop
 check "ps available"                  command -v ps
+# iotop is optional (not always installed by default)
+if command -v iotop >/dev/null 2>&1; then
+    echo "[OK]    iotop available"
+else
+    echo "[WARN]  iotop not installed (optional: apt install iotop)"
+fi
 
 # ── Scripts ───────────────────────────────────────────────────────────────────
 echo ""

@@ -1,4 +1,11 @@
 #!/bin/bash
+# setup_server.sh — GreenDevCorp Week 1 bootstrap
+# Idempotent: safe to run multiple times.
+# Usage: sudo ./setup_server.sh [--ssh-pubkey "<pubkey string>"]
+#
+# Options:
+#   --ssh-pubkey   Public key to install in ~gsx/.ssh/authorized_keys
+#                  If omitted, password auth remains enabled temporarily.
 set -euo pipefail
 
 USER_NAME="gsx"
@@ -6,9 +13,9 @@ BASE_DIR="/opt/P1"
 BACKUP_DIR="/var/backups/P1"
 ETC_DIR="/etc/P1"
 SSH_PORT="22222"
-SSH_PUBKEY=""  # establert via argument --ssh-pubkey
+SSH_PUBKEY=""  # set via --ssh-pubkey argument
 
-# Parseig dels arguments --ssh-pubkey opcionals
+# Parse optional --ssh-pubkey argument
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --ssh-pubkey) SSH_PUBKEY="$2"; shift 2 ;;
@@ -17,7 +24,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 
-# Comprovació de permisos root
+# Root check
 if [[ "$EUID" -ne 0 ]]; then
   echo "Run as root: su - OR sudo ./bootstrap.sh"
   exit 1
@@ -28,13 +35,13 @@ log() {
     echo "==> $1"
 }
 
-# Actualització del sistema
+# System update
 update_system() {
     log "Updating system..."
-    apt update   # -y no és vàlid per a 'update', només per a 'install'
+    apt update   # -y is not valid for 'update', only for 'install'
 }
 
-# Instal·lació de paquets requerits
+# Install required packages
 install_packages() {
     log "Installing required packages..."
     apt install -y \
@@ -47,13 +54,13 @@ install_packages() {
         unattended-upgrades
 }
 
-# Configuració de actualitzacions automàtiques
+# Configure automatic updates
 configure_auto_updates() {
     log "Enabling automatic security updates..."
     dpkg-reconfigure -f noninteractive unattended-upgrades
 }
 
-# Configuració de sudo
+# Configure sudo
 configure_sudo() {
     log "Configuring sudo..."
 
@@ -63,7 +70,8 @@ configure_sudo() {
     fi
 }
 
-
+# Install SSH public key for the admin user
+# Must be done BEFORE disabling password auth, otherwise we'd lock ourselves out.
 setup_authorized_keys() {
     log "Setting up SSH authorized_keys for $USER_NAME..."
 
@@ -75,7 +83,7 @@ setup_authorized_keys() {
     chown "$USER_NAME:$USER_NAME" "$SSH_DIR"
 
     if [[ -n "$SSH_PUBKEY" ]]; then
-        # Afegir clau si no està present
+        # Add key if not already present
         if ! grep -qF "$SSH_PUBKEY" "$AUTH_KEYS" 2>/dev/null; then
             echo "$SSH_PUBKEY" >> "$AUTH_KEYS"
             echo "Public key added to $AUTH_KEYS"
@@ -90,19 +98,19 @@ setup_authorized_keys() {
     fi
 }
 
-# Configuració de SSH
+# Configure SSH
 configure_ssh() {
     log "Configuring SSH..."
 
     systemctl enable ssh
     systemctl start ssh
 
-    # Enfortir la configuració SSH
+    # Harden SSH
     sed -i "s/^#\?Port .*/Port $SSH_PORT/" /etc/ssh/sshd_config
     sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config
     sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
 
-    # Desabilitar autenticació per contrasenya només si tenim una clau pública instal·lada
+    # Only disable password auth if we have a public key installed
     if [[ -s "/home/$USER_NAME/.ssh/authorized_keys" ]]; then
         sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config
         echo "Password authentication disabled (key installed)."
@@ -115,7 +123,7 @@ configure_ssh() {
     systemctl restart ssh
 }
 
-# Creació d'estructura de directoris
+# Create directory structure
 create_structure() {
     log "Creating directory structure..."
 
@@ -130,16 +138,18 @@ create_structure() {
 }
 
 
-# Inicialització del repositori Git
+# Initialize Git repository
+# Must run as the actual user (gsx), not root, so ownership is correct.
 initialize_git() {
     log "Initializing Git repository in $BASE_DIR"
 
     if [ ! -d "$BASE_DIR/.git" ]; then
+        # Run git commands as $USER_NAME to avoid root-owned repo files
         sudo -u "$USER_NAME" git -C "$BASE_DIR" init
         sudo -u "$USER_NAME" git -C "$BASE_DIR" config user.name "GreenDevCorp Admin"
         sudo -u "$USER_NAME" git -C "$BASE_DIR" config user.email "admin@greendevcorp.local"
 
-        
+        # .gitignore: exclude logs, backups, and sensitive files
         cat > "$BASE_DIR/.gitignore" << 'EOF'
 *.log
 backups/
@@ -153,13 +163,18 @@ EOF
 
         sudo -u "$USER_NAME" git -C "$BASE_DIR" add .
         sudo -u "$USER_NAME" git -C "$BASE_DIR" commit -m "Baseline administrative structure"
+
+        # Allow root to also read the git repo (needed for verify scripts run as root)
+        git config --global --add safe.directory "$BASE_DIR"
     else
         log "Git repository already initialized — skipping."
+        # Ensure safe.directory is set even on re-runs
+        git config --global --add safe.directory "$BASE_DIR" 2>/dev/null || true
     fi
 }
 
 
-# Funció principal
+# Main
 main() {
     log "Starting Week 1 bootstrap..."
 
@@ -167,9 +182,9 @@ main() {
     install_packages
     configure_auto_updates
     configure_sudo
-    create_structure     
+    create_structure     # must happen before git init (dirs need to exist)
     setup_authorized_keys
-    configure_ssh        
+    configure_ssh        # uses authorized_keys to decide whether to disable passwords
     initialize_git
 
     log "Bootstrap completed successfully."

@@ -1,157 +1,240 @@
-# Week 2 — Serveis, Observabilitat i Automatització
+# Week 2 — Services, Observabilitat & Automatització
 
-## Context i objectiu
-Durant la Week 2 hem passat d’un servidor amb processos gestionats “a mà” a un sistema **robust, observable i automatitzat**. L’objectiu principal ha estat:
+## Objectiu i context
 
-- Executar serveis de manera fiable amb **systemd**
-- Assegurar que els serveis **s’inicien automàticament** en arrencar el sistema
-- Garantir **recuperació automàtica** en cas de fallada
-- Implementar **backups automàtics verificables**
-- Disposar de **traçabilitat (logs)** per diagnosticar problemes
+Durant la Week 2 hem passat d'un servidor amb processos gestionats "a mà" a un sistema **robust, observable i automatitzat**. El repte real no és fer que els serveis funcionin — és fer que continuïn funcionant sols, i que quan algo falli ho sapiguem immediatament.
 
 ---
 
-## Arquitectura i decisions preses
+## Arquitectura de serveis
 
-### Gestió de serveis amb systemd
-Hem decidit utilitzar **systemd** com a gestor de serveis perquè:
-- És l’estàndard en Debian
-- Permet definir dependències, reinicis automàtics i arrencada al boot
-- Proporciona una integració directa amb el sistema de logs (**journald**)
+### Component overview
 
-**Servei Nginx**
-- S’ha instal·lat Nginx com a servidor web
-- S’ha activat l’arrencada automàtica amb:
-  ```bash
-  systemctl enable nginx
+```
+┌─────────────────────────────────────────────┐
+│              SYSTEMD                         │
+│                                             │
+│  nginx.service ──► Nginx (web server)       │
+│  nginx.service.d/override.conf              │
+│      Restart=on-failure                     │
+│                                             │
+│  p1-backup.timer ──► p1-backup.service      │
+│      OnCalendar=daily        Type=oneshot   │
+│      Persistent=true         ExecStart=     │
+│                              backup.sh      │
+└─────────────────────────────────────────────┘
+         │                    │
+         ▼                    ▼
+    journald logs       /var/backups/P1/
+    journalctl -u       backup_DATE.tar.gz[.gpg]
+```
 
-S’ha creat un override de systemd per assegurar reinici automàtic en cas de fallada:
+---
 
-    [Service]
-    Restart=on-failure
-    RestartSec=2s
+## Decicions de disseny
 
-Hem preferit un override en lloc de modificar la unitat original per mantenir compatibilitat amb actualitzacions del paquet.
+### Per qué systemd timers en lloc de cron?
 
-Motivació: en entorns reals no es pot dependre de reinicis manuals; systemd ens ofereix una solució declarativa i robusta.
+- **Observabilitat**: En `cron` els logs van a syslog (separat); en `systemd timer` estan integrats a journald.
+- **Missed executions**: En `cron` es perd la tasca si el sistema estava apagat; en `systemd timer` l'opció `Persistent=true` l'executa en arrencar.
+- **Dependències**: `cron` no en té; `systemd timer` pot dependre d'altres unitats.
+- **Control**: En `cron` s'utilitza `crontab -l`; en `systemd timer` s'usa `systemctl list-timers --all`.
+- **Debugging**: En `cron` és difícil; en `systemd timer` es fa fàcilment amb `systemctl status p1-backup.service`.
 
-### Servei de backups amb systemd + timer
+**Decisió**: systemd timers. La persistència és clau: si el servidor estava apagat a mitjanit, el backup s'executa en la propera arrencada.
 
-S’ha creat un **servei propi** de systemd (p1-backup.service) que executa un script de backup, i un timer (p1-backup.timer) que el dispara automàticament cada dia.
+### Per qué Restart=on-failure i no Restart=always?
 
-    - Tipus de servei: oneshot (s’executa i finalitza)
+- `Restart=always`: reinicia fins i tot en exits normals (0). Pot causar loops infinits.
+- `Restart=on-failure`: només reinicia quan el codi de sortida és != 0. ✓ Correcte per a Nginx.
+- `RestartSec=5s`: espera 5 segons entre reinicis per evitar flapping.
 
-    - Execució programada amb systemd timers (alternativa moderna a cron)
+### Per qué un fitxer override i no modificar la unit original?
 
-    - Logs del backup disponibles a journald
+```bash
+mkdir -p /etc/systemd/system/nginx.service.d/
+cat > /etc/systemd/system/nginx.service.d/override.conf << 'EOF'
+[Service]
+Restart=on-failure
+RestartSec=5s
+EOF
+```
 
-    - Verificació manual possible amb:
+La unit original (`/usr/lib/systemd/system/nginx.service`) pertany al paquet `nginx`. Si es modifica directament, una actualització del paquet la sobreescriu. L'override al directori `.d/` persisteix i té prioritat.
 
-        systemctl start p1-backup.service
+### Per qué Type=oneshot per al backup?
 
-**Decisió**: hem triat systemd timers en lloc de cron perquè:
+El backup és un treball que s'inicia, executa, i acaba. `Type=oneshot` fa que systemd esperi que el procés surti before marcar el servei com "active/exited". Això permet:
+- `systemctl is-active p1-backup.service` → retorna "active" mentre s'executa
+- El codi de sortida del script determina si la unit ha tingut èxit o falla
 
-    - Estan integrats amb systemd
+---
 
-    - Permeten persistència (si el sistema estava apagat, el backup s’executa en tornar a arrencar)
+## Gestió de logs (journald)
 
-    - Tenen millor observabilitat (estat i logs amb systemctl i journalctl)
+### Configuració de límits
 
-### Observabilitat i logs
+Sense limits, journald pot ocupar tot el disc. Configurat a `/etc/systemd/journald.conf.d/limits.conf`:
 
-Tota l’activitat dels serveis queda registrada a journald.
-Hem creat scripts per facilitar la consulta:
+```ini
+[Journal]
+SystemMaxUse=200M       # espai màxim total per a logs
+SystemMaxFileSize=20M   # mida màxima per fitxer individual
+MaxRetentionSec=30day   # logs de més de 30 dies s'eliminen
+Compress=yes            # comprimir fitxers inactius
+```
 
-    **show-nginx-logs.sh** → mostra logs recents de Nginx
+**Per qué 200 MB?** En un servidor de desenvolupament petit, 200 MB és suficient per a 30 dies de logs. En producció s'usaria més (1-2 GB) i s'enviaria a un sistema de log centralitzat (ELK, Loki).
 
-    **show-backup-logs.sh** → mostra logs del servei de backups
+### Consulta de logs
 
-    **status-week2.sh** → estat de serveis, timers i ús de disc de logs
+```bash
+# Logs d'avui
+journalctl -u nginx --since today
 
-Motivació: en un entorn d’operacions, els logs són la principal font d’informació per entendre errors. Tenir scripts d’observabilitat facilita la diagnosi ràpida.
+# Últims 100 missatges en temps real
+journalctl -u p1-backup.service -n 100 -f
 
-### Gestió de l’espai de logs
+# Errors de les últimes 24h
+journalctl -p err --since "24 hours ago"
 
-Per evitar que els logs ocupin tot el disc, hem configurat límits a journald (retenció i espai màxim).
-Això garanteix que el sistema no quedi sense espai per creixement incontrolat de logs.
-**Verificació del funcionament**
-Estat del servei Nginx:
+# Logs del backup (últim run)
+journalctl -u p1-backup.service --since "1 day ago"
+```
 
-    - systemctl status nginx
-    - journalctl -u nginx
+---
 
-Estat del servei de backups:
+## Backup automatitzat
 
-    - systemctl status p1-backup.service
-    - journalctl -u p1-backup.service
+### Estratègia de l'script `backup.sh`
 
-Timers actius:
+```
+Backup complet de /home ──► tar czf ──► GPG xifrat ──► fitxer .tar.gz.gpg
+                                                         │
+                                    ┌────────────────────┘
+                                    │
+                          /var/backups/P1/          (quan /mnt/storage no muntat)
+                          /mnt/storage/backups/     (quan disc Week 5 muntat)
+```
 
-    - systemctl list-timers --all | grep p1-backup
+Rotació automàtica:
+- Guarda els 7 últims backups diaris
+- Guarda els 4 últims backups setmanals (diumenges)
+- Elimina els fitxers antics automàticament
 
-Verificació de backups:
+### Backup inicial sense xifrat (--no-encrypt)
 
-        Es genera un arxiu .tar.gz a la carpeta backups/
+Durant el `setup_all.sh` l'script de backup s'executa amb `--no-encrypt` com a *smoke test*. Raó: `/etc/backup.passphrase` (Week 5) no existeix encara. L'objectiu és verificar que el mecanisme funciona (tar, paths, permisos). Els backups nocturns via timer ja van xifrats un cop Week 5 és completa.
 
-        Els logs confirmen l’execució correcta del servei
+### ExecStart dinàmic al servei systemd
 
-## Resposta a les preguntes de l’enunciat
-**Què hauria de passar si Nginx cau a les 3 del matí?**
+El `p1-backup.service` podria tenir `ExecStart` hardcoded a `/opt/P1/...`. Com el repo pot estar en qualsevol ruta (shared folder VirtualBox, `/home/gsx/...`), `week2_setup.sh` pateja `ExecStart` usant `sed` just després de copiar el fitxer a `/etc/systemd/system/`:
 
-Gràcies a la configuració de systemd amb Restart=on-failure, el servei es reinicia automàticament.
-L’incident queda registrat a journald, de manera que l’endemà es pot consultar què ha passat:
+```bash
+# Obtenir ruta real del repo (dinàmic)
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+# Patchejar ExecStart
+sed -i "s|ExecStart=.*|ExecStart=$PROJECT_ROOT/scripts/Week_5_backup/backup.sh|" \
+    /etc/systemd/system/p1-backup.service
+```
 
-    journalctl -u nginx --since "today"
+### Fallback robust del directori de Backup
 
-En un entorn real, aquest mecanisme es podria complementar amb alertes (monitorització externa).
+**Motiu**: En els tests de Week 2 cridem a generar backup. No obstant, a causa de que el disc principal de seguretat `/mnt/storage` no es formatarà ni muntarà en virtualbox fins a la instal·lació de la Week 5, el script moria i feia malbé els automatismes encadenats de test.
+**Solució**: El procés de `backup.sh` ha estat dotat de funcionalitat Fallback avaluant `mount | grep` al disc. Si comprova que la ruta òptima externa no és assequible, salva les còpies dins l'arbre principal directament a `/var/backups/P1/`.
 
-**Com comprovem que un servei es reinicia automàticament?**
+---
 
-No cal esperar que falli “de veritat”. Podem simular una fallada:
+## Scripts d'observabilitat
 
-    sudo kill -9 $(pidof nginx)
+- **`show-nginx-logs.sh`**: Executa `journalctl -u nginx` filtrat mostrant els últims N missatges.
+- **`show-backup-logs.sh`**: Mostra els logs del backup, l'estat del timer i els fitxers al disc.
+- **`status-week2.sh`**: Dashboard complet amb serveis, timers, errors i l'ús de logs.
 
-I després comprovar:
+---
 
-    systemctl status nginx
-    journalctl -u nginx
+## Respostes a les preguntes de l'enunciat
 
-Això demostra que el servei es recupera i que l’error queda registrat als logs.
+### Qué hauria de passar si Nginx cau a les 3 AM?
 
-**Si els backups fallen silenciosament, com ho sabríem?**
+Amb `Restart=on-failure` configurat, systemd detecta la caiguda (exit code != 0) i reinicia el servei en 5 segons. El downtime és pràcticament zero.
 
-L’estat del servei i del timer és visible amb:
+L'event queda registrat a journald:
+```bash
+journalctl -u nginx --since "03:00" --until "03:30"
+# Mostra: el servei ha caigut, s'ha reiniciat, i ara és actiu
+```
 
-    systemctl status p1-backup.service
-    systemctl list-timers
+En un entorn productiu, s'afegiria monitorització externa (Prometheus + Alertmanager, UptimeRobot) per notificar un oncall.
 
-Els logs de l’execució del backup queden a:
+### Com es comprova que el servei es reinicia automàticament?
 
-    journalctl -u p1-backup.service
+No cal esperar que fallen "de veritat". Es simula:
 
-L’absència de nous fitxers a la carpeta backups/ també és un indicador de problema.
+```bash
+# Simular crash
+sudo kill -9 $(pidof nginx)
 
-En un entorn productiu, aquests indicadors es podrien convertir en alertes automàtiques.
+# Esperar 6 segons i comprovar
+sleep 6
+systemctl is-active nginx        # ha de dir "active"
+journalctl -u nginx --since "1 min ago"  # ha de mostrar el reinici
+```
 
-**Com explicaríem una fallada del servei a l’equip utilitzant només logs?**
+### Si els backups fallen silenciosament, com ho sabríem?
 
-Consultaríem:
+Senyals d'alerta disponibles:
+```bash
+# 1. L'estat del servei
+systemctl status p1-backup.service    # "failed" si l'últim run ha fallat
 
-    journalctl -u nginx
+# 2. Logs del run anterior
+journalctl -u p1-backup.service --since "yesterday"
 
-o
+# 3. Data de modificació del fitxer de backup
+ls -lt /var/backups/P1/              # l'últim fitxer ha de ser d'ahir
 
-    journalctl -u p1-backup.service
+# 4. El timer
+systemctl list-timers p1-backup.timer  # "Last trigger" + "Passed"
+```
 
-I explicaríem:
+En producció: script de monitorització que comprova que el fitxer de backup de la nit anterior existeix i té mida esperada. Si no, envia un email/alert.
 
-    - Hora de la fallada
+### Com s'explica una fallada del servei a l'equip usant logs?
 
-    - Missatge d’error concret
+```bash
+journalctl -u nginx --since "2026-03-20" --until "2026-03-21"
+```
 
-    - Accions automàtiques del sistema (reinici del servei)
+Comunicació tipus:
+> "A les 03:47, journald registra exit code 137 (SIGKILL per OOM). El sistema ha reiniciat Nginx automàticament a les 03:47:05. Causa probable: ús de memòria excessiu. Acció: revisar configuració worker_processes."
 
-    - Estat final del servei
+Informació clau del log: hora exacta, codi d'error, missatge del procés, accions del sistema (reinici).
 
-Això permet una comunicació clara i basada en evidències, no en suposicions.
+---
 
+## Troubleshooting ràpid
+
+```bash
+# Servei no arrenca
+systemctl status nginx -l
+journalctl -u nginx -n 50
+
+# Timer no s'activa
+systemctl list-timers --all
+systemctl status p1-backup.timer
+
+# Backup no troba fitxers
+ls -la /var/backups/P1/
+journalctl -u p1-backup.service --since "today"
+
+# Logs ocupen massa disc
+journalctl --disk-usage
+journalctl --vacuum-size=100M    # alliberar fins a 100 MB
+```
+
+---
+
+## Reflexió
+
+La lliçó més important d'aquesta setmana: **un servei que funciona no és suficient — ha de funcionar de forma observable i recuperable**. Quan algo falla a les 3 AM, la informació als logs és tot el que tens. Dissenyar els logs i el monitoring *a priori* (no quan algo ja ha fallat) és el que separa un sysadmin professional d'un novell.

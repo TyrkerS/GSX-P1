@@ -1,6 +1,9 @@
 #!/bin/bash
-# setup_week3.sh — Configuració de Week 3
-# Instal·la: paquets de monitoring, servei de demo workload
+# setup_week3.sh — Install and enable Week 3 workload service.
+# Copies p1-workload.service to /etc/systemd/system/ and reloads systemd.
+# Also installs psmisc (needed by diagnose.sh for pstree).
+#
+# Usage: sudo ./setup_week3.sh
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,11 +34,11 @@ log "Service installed: $SYSTEMD_DEST"
 log ""
 log "Usage:"
 log "  sudo systemctl start p1-workload.service   # start the workload"
-log "  systemd-cgtop -b -n 3                      # monitor CPU/MEM limits"
-log "  sudo systemctl stop p1-workload.service    # stop the workload"
+log "  systemd-cgtop -b -n 3                      # observe CPU/MEM limits"
+log "  sudo systemctl stop p1-workload.service    # stop it"
 log ""
-log "Or run demo scripts directly:"
-log "  ./process_control_demo.sh                  # signal management demo"
+log "Or run the demo scripts directly:"
+log "  ./process_control_demo.sh                  # signal handling demo"
 log "  ./resource_limit_demo.sh                   # cgroup limits demo"
 log ""
-log "==> Week 3 configuration completed."
+log "==> Week 3 setup completed."

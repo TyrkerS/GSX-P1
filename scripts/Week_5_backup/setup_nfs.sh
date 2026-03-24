@@ -1,11 +1,17 @@
 #!/bin/bash
-# setup_nfs.sh — Configuració de NFS per a backups en xarxa
-# Mode servidor: instal·la nfs-kernel-server i exporta /mnt/storage/backups
-# Mode client: munta el backup remot en /mnt/nfs_backups
+# setup_nfs.sh — Configure NFS server to share /mnt/storage/backups
+# and a second VM (NFS client) to mount it.
+#
+# Run on the SERVER VM: sudo ./setup_nfs.sh server
+# Run on the CLIENT VM: sudo ./setup_nfs.sh client <server_ip>
+#
+# The NFS share is read-only from the client side (backups directory),
+# following least-privilege: clients can verify/read backups, not write them.
+
 set -euo pipefail
 
 EXPORT_DIR="/mnt/storage/backups"
-NFS_MOUNT="/mnt/nfs_backups"  
+NFS_MOUNT="/mnt/nfs_backups"  # Mount point on the client
 
 log() { echo "[$(date '+%H:%M:%S')] $*"; }
 die() { echo "ERROR: $*" >&2; exit 1; }
@@ -19,14 +25,18 @@ esac
 
 [[ $EUID -eq 0 ]] || die "Must be run as root."
 
+# ── SERVER SETUP ──────────────────────────────────────────────────────────────
 if [[ "$MODE" == "server" ]]; then
     log "Installing NFS server..."
     apt-get update -qq
     apt-get install -y nfs-kernel-server
 
-    mountpoint -q /mnt/storage || die "/mnt/storage is not mounted. Run setup_storage.sh first."
+    # Verify the export directory exists and is on mounted storage
+    mountpoint -q /mnt/storage || die "/mnt/storage not mounted. Run setup_storage.sh first."
     mkdir -p "$EXPORT_DIR"
 
+    # Get client subnet (allow the whole NAT subnet)
+    # In VirtualBox NAT, the host is typically 10.0.2.0/24
     CLIENT_SUBNET="10.0.2.0/24"
 
     log "Configuring NFS export: $EXPORT_DIR → $CLIENT_SUBNET (read-only)"
@@ -53,6 +63,7 @@ if [[ "$MODE" == "server" ]]; then
     log "Clients can mount: <this_server_ip>:$EXPORT_DIR → $NFS_MOUNT"
 fi
 
+# ── CLIENT SETUP ──────────────────────────────────────────────────────────────
 if [[ "$MODE" == "client" ]]; then
     log "Installing NFS client utilities..."
     apt-get update -qq
@@ -61,15 +72,17 @@ if [[ "$MODE" == "client" ]]; then
     mkdir -p "$NFS_MOUNT"
 
     log "Testing NFS mount from $SERVER_IP:$EXPORT_DIR..."
+    # Temporary mount to verify connectivity
     if mountpoint -q "$NFS_MOUNT"; then
         log "$NFS_MOUNT already mounted — skipping temporary test."
     else
         mount -t nfs -o ro "$SERVER_IP:$EXPORT_DIR" "$NFS_MOUNT"
-        log "Successful NFS mount. Visible files:"
+        log "NFS mount successful. Files visible:"
         ls -lh "$NFS_MOUNT" || true
         umount "$NFS_MOUNT"
     fi
 
+    # Persistent mount via fstab
     FSTAB_LINE="$SERVER_IP:$EXPORT_DIR $NFS_MOUNT nfs ro,_netdev,auto 0 0"
     if grep -qF "$SERVER_IP:$EXPORT_DIR" /etc/fstab; then
         log "fstab already has NFS entry — skipping."
@@ -82,7 +95,7 @@ if [[ "$MODE" == "client" ]]; then
     mount -a
 
     log "NFS mount status:"
-    mountpoint -q "$NFS_MOUNT" && echo "Muntat: $NFS_MOUNT" || echo "NO muntat: $NFS_MOUNT"
+    mountpoint -q "$NFS_MOUNT" && echo "Mounted: $NFS_MOUNT" || echo "NOT mounted: $NFS_MOUNT"
 
     log ""
     log "=== NFS CLIENT READY ==="

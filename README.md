@@ -18,9 +18,10 @@ Configuració:
 -   Nom: `debian-gsx`
 -   2 GB RAM
 -   1 CPU
--   Disc: 20 GB (dinàmic)
+-   Disc 1 (OS): 20 GB (dinàmic)
+-   Disc 2 (Storage): 10 GB (dinàmic) — **CRÍTIC**: Aquest segon disc s'ha d'afegir físicament als paràmetres de *VirtualBox* en crear la màquina. Els scripts particionaran automàticament `/dev/sdb` per als Backups de la Setmana 5, però el hardware virtual ha d'existir prèviament o tot el sistema donarà error.
 -   Instal·lació: **Unattended Install**
--   Usuari: `gsx`
+-   Usuari Principal: `gsx`
 -   Password coneguda
 -   Hostname: `debian-gsx`
 
@@ -37,9 +38,10 @@ VirtualBox → Configuració → Xarxa → Adaptador 1
 Mode: NAT\
 Reenvío de puertos:
 
-  Nom   Protocol   Port host   Port convidat
-  ----- ---------- ----------- ---------------
-  SSH   TCP        2222        22
+- **Nom**: SSH
+- **Protocol**: TCP
+- **Port host**: 22222
+- **Port convidat**: 22
 
 ------------------------------------------------------------------------
 
@@ -59,7 +61,7 @@ Només es necessita Git per poder clonar el repositori.
 
     git clone https://github.com/usuari/GSX-P1.git
     cd GSX-P1/scripts
-    ./bootstrap.sh
+    sudo bash ./setup_all.sh
 
 Aquest script configura completament el sistema.
 
@@ -101,7 +103,8 @@ Aquest script configura completament el sistema.
 
 Executar:
 
-    ./verify_setup.sh
+    cd GSX-P1/scripts
+    sudo bash ./verify_all.sh
 
 El script comprova:
 
@@ -123,11 +126,13 @@ Retorna:
 
 ##  Backup
 
-El sistema crea un directori dedicat:
+El sistema fa còpies diàries automàtiques amb:
 
-    /var/backups/P1/
-
-El script `backup.sh` empaqueta dades preservant permisos.
+-   Preservació de permisos (`--preserve-permissions`, `--same-owner`)
+-   Xifrat GPG AES-256 (fitxers `.tar.gz.gpg`)
+-   Rotació: 7 còpies diàries + 4 setmanals
+-   Execució via `p1-backup.timer` (systemd, `Persistent=true`)
+-   Restauració: `scripts/Week_5_backup/restore.sh <fitxer> [destí]`
 
 ------------------------------------------------------------------------
 
@@ -137,14 +142,29 @@ El script `backup.sh` empaqueta dades preservant permisos.
 2.  Configurar port forwarding
 3.  Instal·lar Git
 4.  Clonar repositori
-5.  Executar `swtup_server.sh`
-6.  Executar `verify_setup.sh`
+5.  Executar `sudo bash ./setup_all.sh`
+6.  Executar `sudo bash ./verify_all.sh`
 
-Tot el sistema queda configurat automàticament.
+Tot el sistema queda configurat automàticament des de la setmana 1 fins a la 5.
 
 ------------------------------------------------------------------------
 
-## 🧠 Principis aplicats
+## Documentació
+
+| Fitxer | Contingut |
+|--------|-----------|
+| `docs/week1.md` | SSH, sudo, idempotència, flock, reflexió |
+| `docs/week2.md` | Nginx, systemd, journald, observabilitat |
+| `docs/week3.md` | Senyals, cgroups, diagnosi, troubleshooting |
+| `docs/week4.md` | Usuaris, ACLs, PAM limits, entorn compartit |
+| `docs/week5.md` | Storage, backup, xifrat, NFS, recovery |
+| `docs/runbook.md` | **Operations runbook**: 7 procediments operatius |
+| `docs/architecture.md` | **Arquitectura**: diagrames, decisions, escalabilitat |
+| `docs/security_policy.md` | **Security Policy**: access rules, retenció de backup |
+
+------------------------------------------------------------------------
+
+## Principis aplicats
 
 -   Infrastructure as Code
 -   Idempotència
@@ -152,3 +172,4 @@ Tot el sistema queda configurat automàticament.
 -   Hardening per defecte
 -   Separació clara entre sistema i projecte
 -   Reproduïbilitat total
+-   3-2-1 Backup principle

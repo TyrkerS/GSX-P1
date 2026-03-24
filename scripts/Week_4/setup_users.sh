@@ -1,6 +1,9 @@
 #!/bin/bash
-# setup_users.sh — Creació de grup greendevcorp i usuaris de desenvolupament
-# Crea 4 usuaris (dev1-dev4) amb contrasenyes aleatòries, força canvi en primer login, assigna al grup
+# setup_users.sh — Create GreenDevCorp developer users and group.
+# Generates a random password per user; prints credentials once.
+# Idempotent: skips existing users.
+#
+# Usage: sudo ./setup_users.sh
 set -euo pipefail
 
 GROUP="greendevcorp"
@@ -19,8 +22,10 @@ for USER in "${USERS[@]}"; do
     if id "$USER" &>/dev/null; then
         echo "[$USER] Already exists — skipping."
     else
-        # Generate random 16-character password (never hardcode!)
-        PASS=$(tr -dc 'A-Za-z0-9!@#%^&*' < /dev/urandom | head -c 16)
+        # Generate a random 16-char password
+        # '|| true' prevents SIGPIPE error (head closes pipe before tr finishes)
+        PASS=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16 || true)
+        [[ -z "$PASS" ]] && PASS="ChangeMe$(date +%s)"
 
         useradd \
             --create-home \
@@ -30,7 +35,7 @@ for USER in "${USERS[@]}"; do
 
         echo "$USER:$PASS" | chpasswd
 
-        # Force password change on first login (less privileges)
+        # Force password change on first login (least privilege)
         chage -d 0 "$USER"
 
         echo "[$USER] Created  password: $PASS  (change on first login)"
@@ -39,5 +44,5 @@ done
 
 echo "============================================"
 echo ""
-echo "Users created. Store the passwords in a password manager."
-echo "Users will need to change password on first login."
+echo "Users created. Store passwords in a password manager."
+echo "Users will be forced to change password on first login."

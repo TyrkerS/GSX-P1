@@ -1,5 +1,20 @@
 #!/bin/bash
+# verify_all.sh — Full system verification orchestrator.
+# Runs all weekly verification scripts in order and gives a global summary.
+#
+# Usage: sudo ./scripts/verify_all.sh [--start-week N]
+#   --start-week N   Only run verifications from Week N onwards
+#
+# Exit codes:
+#   0 → All checks passed
+#   N → Number of failed weekly verification scripts
 set -euo pipefail
+
+# Disable pagers for all child commands (journalctl, systemctl, git, etc.)
+# Without this, long output opens 'less' and blocks the script.
+export PAGER=cat
+export SYSTEMD_PAGER=cat
+export GIT_PAGER=cat
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 

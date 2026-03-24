@@ -1,9 +1,10 @@
 #!/bin/bash
-# process_control_demo.sh — Demostració de control de processos amb senyals
-# Crea une càrrega, mostra PID, pausa amb SIGSTOP, reprèn amb SIGCONT, canvia prioritat, envia senyals
+# process_control_demo.sh — Week 3: demonstrate signals and process control.
+# Shows: SIGSTOP/SIGCONT, renice, SIGTERM/SIGKILL, SIGUSR1/SIGUSR2.
+# Run as root (or with sudo) for the renice step.
 set -euo pipefail
 
-echo "=== PROCESS CONTROL DEMONSTRATION ==="
+echo "=== PROCESS CONTROL DEMO ==="
 echo
 
 echo "1) Creating CPU workload..."
@@ -14,7 +15,7 @@ echo "Process started with PID: $PID"
 sleep 2
 
 echo
-echo "2) Showing processes with highest CPU usage..."
+echo "2) Showing top CPU processes..."
 ps -eo pid,ppid,user,ni,%cpu,%mem,etime,cmd --sort=-%cpu | head -n 5
 sleep 2
 
@@ -57,11 +58,11 @@ ps -p $PID -o pid,stat,%cpu,cmd 2>/dev/null || true
 
 echo
 echo "8) Sending SIGUSR2 again (resume)..."
-kill -SIGUSR2 $PID 2>/dev/null || echo "  Procés ja desaparegut"
+kill -SIGUSR2 $PID 2>/dev/null || echo "  Process already gone"
 sleep 2
 
 echo
-echo "9) Stopping process with SIGTERM (gracefully)..."
+echo "9) Terminating process with SIGTERM (graceful)..."
 kill -TERM $PID 2>/dev/null || true
 sleep 2
 
@@ -69,8 +70,8 @@ if ps -p $PID > /dev/null 2>&1; then
     echo "Process still running, forcing kill with SIGKILL..."
     kill -KILL $PID
 else
-    echo "Process stopped gracefully."
+    echo "Process terminated gracefully."
 fi
 
 echo
-echo "=== DEMONSTRATION COMPLETED ==="
+echo "=== DEMO COMPLETED ==="

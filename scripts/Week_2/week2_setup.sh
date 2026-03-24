@@ -5,8 +5,9 @@ set -euo pipefail
 # Configuració
 # --------------------------------------------------
 
-PROJECT_ROOT="/opt/P1"
-SYSTEMD_REPO_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../systemd" && pwd)"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
+SYSTEMD_REPO_DIR="$PROJECT_ROOT/systemd"
 
 BACKUP_SERVICE_NAME="p1-backup.service"
 BACKUP_TIMER_NAME="p1-backup.timer"
@@ -46,7 +47,7 @@ install_packages() {
 }
 
 # --------------------------------------------------
-# Configuració de Nginx
+# Configurar Nginx
 # --------------------------------------------------
 
 configure_nginx() {
@@ -71,7 +72,7 @@ EOF
 }
 
 # --------------------------------------------------
-# Instal·lar unitats systemd (servei backup + timer)
+# Instal·lar systemd units (backup service + timer)
 # --------------------------------------------------
 
 install_systemd_units() {
@@ -88,12 +89,24 @@ install_systemd_units() {
     fi
 
     cp "$BACKUP_SERVICE_SRC" "$BACKUP_SERVICE_DEST"
-    cp "$BACKUP_TIMER_SRC" "$BACKUP_TIMER_DEST"
+    cp "$BACKUP_TIMER_SRC"   "$BACKUP_TIMER_DEST"
+
+    # Patch ExecStart with the actual backup script path (repo may not be at /opt/P1)
+    BACKUP_SCRIPT="$PROJECT_ROOT/scripts/Week_5_backup/backup.sh"
+    if [[ -f "$BACKUP_SCRIPT" ]]; then
+        sed -i "s|ExecStart=.*|ExecStart=$BACKUP_SCRIPT|" "$BACKUP_SERVICE_DEST"
+        echo "ExecStart patched to: $BACKUP_SCRIPT"
+    fi
+
+    # Remove RequiresMountsFor if /mnt/storage doesn't exist yet (Week 5 disk optional)
+    if ! mountpoint -q /mnt/storage 2>/dev/null; then
+        sed -i '/^RequiresMountsFor/d' "$BACKUP_SERVICE_DEST"
+        echo "RequiresMountsFor removed (no storage disk yet — will backup to /var/backups/P1)"
+    fi
 
     systemctl daemon-reload
-
     systemctl enable "$BACKUP_TIMER_NAME"
-    systemctl start "$BACKUP_TIMER_NAME"
+    systemctl start  "$BACKUP_TIMER_NAME"
 }
 
 # --------------------------------------------------

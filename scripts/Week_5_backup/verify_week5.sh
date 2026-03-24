@@ -1,6 +1,7 @@
 #!/bin/bash
-# verify_week5.sh — Script de verificació complet de Week 5
-# Comprova: /mnt/storage muntat, contrasenya accessible, GPG instal·lat, fitxers de backup existeixen, prova de restauració
+# verify_week5.sh — Week 5 comprehensive verification
+# Checks: storage, backup files, encryption, passphrase, timer, restore test.
+# Run as root (restore test needs --same-owner).
 set -euo pipefail
 
 MOUNT_POINT="/mnt/storage"
@@ -25,45 +26,46 @@ echo ""
 echo "=== WEEK 5 VERIFICATION ==="
 echo ""
 
-
+# ── 1. Storage ────────────────────────────────────────────────────────────────
 echo "--- Storage ---"
 check "Mount point exists"              test -d "$MOUNT_POINT"
-check "Storage mounted at $MOUNT_POINT" mountpoint -q "$MOUNT_POINT"
+check "Storage mounted on $MOUNT_POINT" mountpoint -q "$MOUNT_POINT"
 check "fstab entry uses UUID"           grep -P "^UUID=\S+\s+$MOUNT_POINT" /etc/fstab
 check "Backup directory exists"         test -d "$BACKUP_DIR"
 
-
+# ── 2. Encryption setup ───────────────────────────────────────────────────────
 echo ""
 echo "--- Encryption ---"
-check "GPG installed"                command -v gpg
+check "GPG is installed"                command -v gpg
 check "Passphrase file exists"          test -f "$PASSPHRASE_FILE"
-check "Passphrase file has 600 permissions"    bash -c '[[ $(stat -c %a "'"$PASSPHRASE_FILE"'") == "600" ]]'
-check "Passphrase file owned by root"   bash -c '[[ $(stat -c %U "'"$PASSPHRASE_FILE"'") == "root" ]]'
+check "Passphrase file is chmod 600"    bash -c '[[ $(stat -c %a '"$PASSPHRASE_FILE"') == "600" ]]'
+check "Passphrase file owned by root"   bash -c '[[ $(stat -c %U '"$PASSPHRASE_FILE"') == "root" ]]'
 
-
+# ── 3. Backup files ───────────────────────────────────────────────────────────
 echo ""
 echo "--- Backup files ---"
 LATEST=$(ls -1t "$BACKUP_DIR"/backup_*.tar.gz.gpg "$BACKUP_DIR"/backup_*.tar.gz 2>/dev/null | head -n 1 || true)
 check "At least one backup file exists" test -n "${LATEST:-}"
-check "Most recent backup file is not empty" test -s "${LATEST:-/dev/null}"
+check "Latest backup file is non-empty" test -s "${LATEST:-/dev/null}"
 
 if [[ -n "${LATEST:-}" ]]; then
-    echo "       Most recent: $LATEST ($(du -sh "$LATEST" | cut -f1))"
+    echo "       Latest: $LATEST ($(du -sh "$LATEST" | cut -f1))"
 fi
 
-
+# Rotation: check we're not accumulating more than KEEP_DAILY+KEEP_WEEKLY+buffer
 DAILY_COUNT=$(ls -1 "$BACKUP_DIR"/backup_*.tar.gz* 2>/dev/null | wc -l || echo 0)
 echo "       Daily backups present: $DAILY_COUNT"
 
-
+# ── 4. Systemd timer ─────────────────────────────────────────────────────────
 echo ""
-echo "--- systemd timer ---"
-check "Timer unit enabled"           systemctl is-enabled "$TIMER_NAME"
+echo "--- Systemd timer ---"
+check "Timer unit is enabled"           systemctl is-enabled "$TIMER_NAME"
 check "Timer unit is active"            systemctl is-active  "$TIMER_NAME"
 
 NEXT=$(systemctl show "$TIMER_NAME" -p NextElapseUSecRealtime 2>/dev/null | cut -d= -f2 || true)
-[[ -n "$NEXT" ]] && echo "       Next execution: (see: systemctl list-timers)"
+[[ -n "$NEXT" ]] && echo "       Next run: $(systemd-analyze calendar daily 2>/dev/null | grep 'Next elapse' || echo 'see: systemctl list-timers')"
 
+# ── 5. Restore test ───────────────────────────────────────────────────────────
 echo ""
 echo "--- Restore test ---"
 
@@ -76,25 +78,26 @@ if [[ -n "${LATEST:-}" ]]; then
             --passphrase-file "$PASSPHRASE_FILE" \
             --decrypt "$LATEST" \
         | tar --preserve-permissions --same-owner -xzf - -C "$RESTORE_DIR" \
-            && echo "[OK]    Encrypted restore extraction successful" \
+            && echo "[OK]    Encrypted restore extraction succeeded" \
             || { echo "[ERROR] Encrypted restore extraction failed"; ERRORS=$((ERRORS + 1)); }
     else
         tar --preserve-permissions --same-owner -xzf "$LATEST" -C "$RESTORE_DIR" \
-            && echo "[OK]    Plain restore extraction successful" \
+            && echo "[OK]    Plain restore extraction succeeded" \
             || { echo "[ERROR] Plain restore extraction failed"; ERRORS=$((ERRORS + 1)); }
     fi
 
     FILE_COUNT=$(find "$RESTORE_DIR" -type f | wc -l)
-    check "Restored content is not empty (files found: $FILE_COUNT)" test "$FILE_COUNT" -gt 0
+    check "Restored content is non-empty (files found: $FILE_COUNT)" test "$FILE_COUNT" -gt 0
 
     rm -rf "$RESTORE_DIR"
 else
-    echo "[SKIP]  No backup files found — skipping restore test"
+    echo "[SKIP]  No backup file found — skipping restore test"
 fi
 
+# ── Result ────────────────────────────────────────────────────────────────────
 echo ""
 if [[ "$ERRORS" -eq 0 ]]; then
-    echo "=== VERIFICATION COMPLETED SUCCESSFULLY ==="
+    echo "=== VERIFICATION SUCCESSFUL ==="
     exit 0
 else
     echo "=== VERIFICATION FAILED: $ERRORS error(s) ==="

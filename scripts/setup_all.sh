@@ -1,6 +1,18 @@
 #!/bin/bash
-# setup_all.sh — Script de configuració complet de tot el sistema
-# Executa els scripts de setup de cada setmana en ordre, amb opcions per saltar setmanes i configurar el SSH.
+# setup_all.sh — Full system setup orchestrator.
+# Runs all weekly setup scripts in the correct dependency order.
+#
+# Usage: sudo ./scripts/setup_all.sh [OPTIONS]
+#   --ssh-pubkey "ssh-ed25519 ..."   Public key to install for the gsx user (W1)
+#   --start-week N                   Skip weeks before N (resume partial setup)
+#   --disk /dev/sdb                  Disk to use for Week 5 storage (default: /dev/sdb)
+#   --no-nfs                         Skip NFS setup (default: NFS is skipped)
+#
+# Example (first time):
+#   sudo ./scripts/setup_all.sh --ssh-pubkey "$(cat ~/.ssh/id_ed25519.pub)"
+#
+# Example (resume from Week 4):
+#   sudo ./scripts/setup_all.sh --start-week 4
 set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -76,6 +88,13 @@ fi
 section 2 "Services, Observability & Automation"
 if [[ $START_WEEK -le 2 ]]; then
     run "$SCRIPT_DIR/Week_2/week2_setup.sh"
+    # Trigger one unencrypted backup to verify the system works.
+    # --no-encrypt is used because /etc/backup.passphrase (Week 5) doesn't exist yet.
+    # The nightly systemd timer will run encrypted backups once Week 5 is complete.
+    echo "  → Running initial smoke-test backup (no encryption)..."
+    bash "$SCRIPT_DIR/Week_5_backup/backup.sh" --no-encrypt \
+        && echo "  ✔  Initial backup created in /var/backups/P1/" \
+        || echo "  ⚠  Backup smoke-test failed — check backup.sh manually"
 fi
 
 # ── Week 3: Process management ───────────────────────────────────────────────
@@ -97,8 +116,18 @@ fi
 # ── Week 5: Storage & backup ──────────────────────────────────────────────────
 section 5 "Storage, Backup & Recovery"
 if [[ $START_WEEK -le 5 ]]; then
-    run "$SCRIPT_DIR/Week_5_backup/setup_storage.sh" "$DISK"
-    run "$SCRIPT_DIR/Week_5_backup/setup_passphrase.sh"
+    if [[ -b "$DISK" ]]; then
+        run "$SCRIPT_DIR/Week_5_backup/setup_storage.sh" "$DISK"
+        run "$SCRIPT_DIR/Week_5_backup/setup_passphrase.sh"
+        echo "  → Triggering initial backup run to storage..."
+        systemctl start p1-backup.service && echo "  ✔  Backup triggered" \
+            || echo "  ⚠  Backup trigger failed"
+    else
+        echo "  ⚠  Disk $DISK not found — skipping Week 5 storage setup."
+        echo "     Add a second disk in VirtualBox and re-run with: --start-week 5 --disk /dev/sdb"
+        echo "  → Configuring passphrase only (no disk)..."
+        run "$SCRIPT_DIR/Week_5_backup/setup_passphrase.sh"
+    fi
 fi
 
 # ── Reload systemd ────────────────────────────────────────────────────────────

@@ -1,72 +1,100 @@
-# Week 4 — Usuaris, Grups i Control d'Accés
+# Week 4 — Usuaris, Grups & Control d'Accés
 
-## Objectiu
+## Objectiu i context
 
-Crear un entorn de col·laboració segur per als 4 developers de GreenDevCorp, aplicant el principi de mínim privilegi: cada usuari té exactament els permisos que necessita i res més.
-
----
-
-## Estructura d'usuaris i grups
-
-| Usuari | Grup principal | Accés |
-|--------|---------------|-------|
-| dev1 | greendevcorp | Escriptura a `done.log`, accés complet a `shared/` |
-| dev2 | greendevcorp | Accés complet a `shared/`, lectura de `done.log` |
-| dev3 | greendevcorp | Lectura de `shared/` i `done.log` |
-| dev4 | greendevcorp | Lectura de `shared/` i `done.log` |
-
-**Per què un sol grup `greendevcorp`?**
-Tots els developers comparteixen el mateix nivell de confiança base. Les diferències individuals s'expressen via ACLs (des de Unix permissions és insuficient per als casos de `done.log`).
+GreenDevCorp té 4 developers que comparteixen el mateix servidor. Cal un model de seguretat que permeti col·laboració sense comprometre la privacitat ni la integritat de les dades. El principi fonamental: **mínim privilegi** — cada usuari té exactament els permisos que necessita, i res més.
 
 ---
 
-## Directoris i permisos
+## Disseny de la estructura d'usuaris i grups
 
-### Estructura
+### Per qué un sol grup `greendevcorp` i no un per usuari?
+
+```
+Opció A: un grup compartit (ESCOLLIT)
+  dev1, dev2, dev3, dev4 → greendevcorp
+  Avantages: simple, s'escala bé, les diferències fines es gestionen amb ACLs
+
+Opció B: grups individuals + grup compartit
+  dev1 → dev1_grp + greendevcorp
+  Avantages: granularitat a nivell Unix
+  Desavantages: complexitat creixent O(n²) amb persones
+```
+
+**Decisió**: grup compartit + ACLs POSIX per als casos especials. Unix permissions gestiona les regles generals, ACLs gestiona les excepcions.
+
+### Taula de permisos
+
+- **dev1**: rw (escriptura) a `done.log`, rwx a `shared/`, r-x a `bin/`
+- **dev2**: r-- (lectura) a `done.log`, rwx a `shared/`, r-x a `bin/`
+- **dev3**: r-- (lectura) a `done.log`, r-x (lectura) a `shared/`, r-x a `bin/`
+- **dev4**: r-- (lectura) a `done.log`, r-x (lectura) a `shared/`, r-x a `bin/`
+
+---
+
+## Estructura de directoris i permisos especials
 
 ```
 /home/greendevcorp/
-├── bin/          (750, root:greendevcorp)   Scripts compartits, executables pel grup
-├── shared/       (3770, root:greendevcorp)  Directori de treball compartit
-└── done.log      (640, dev1:greendevcorp)   Registre de tasques
+├── bin/           chmod 750  owner: root:greendevcorp    Scripts executables
+├── shared/        chmod 3770 owner: root:greendevcorp    Treball compartit
+└── done.log       chmod 640  owner: dev1:greendevcorp    Registre de tasques
 ```
 
-### Bits especials
+### Bits especials a `shared/` (chmod 3770)
 
-**`shared/` — chmod 3770 (setgid + sticky bit)**
-- **Setgid (2...)**: Els nous fitxers creats dins hereten el grup `greendevcorp`, no el grup primari del creador.
-- **Sticky bit (...1...)**: Només el propietari d'un fitxer pot eliminar-lo, tot i que altres tinguin permís d'escriptura al directori.
+**Setgid (bit 2):** Quan un fitxer es crea dins de `shared/`, el grup propietari és `greendevcorp` (heretat del directori), no el grup primari de qui el crea. Sense setgid, un fitxer creat per dev1 tindria grup `dev1`, i dev2 no podria llegir-lo si els permisos de "other" estan restringits.
 
-**Diferència setgid en directori vs fitxer:**
-- **En directori**: els nous fitxers hereten el grup del directori (útil per a col·laboració).
-- **En fitxer executable**: el fitxer s'executa com el grup propietari (perillós, usar amb molta cura).
+**Sticky bit (bit 1):** Dins de `shared/`, un usuari no pot eliminar fitxers creats per altri, fins i tot si té permís d'escriptura al directori. Sense sticky bit, dev2 podria eliminar fitxers de dev1.
+
+**Diferència setgid en directori vs. fitxer:**
+- **Directori**: els nous fitxers hereten el grup del directori → segur i útil
+- **Fitxer executable**: el fitxer s'executa amb els privilegis del grup propietari → perillós (similar a setuid). Exemple legítim: `crontab` usa setgid per escriure al spool.
 
 ---
 
-## POSIX ACLs
+## POSIX ACLs — Per qué i com
 
-Les permissions Unix estàndard (rwx per user/group/other) no permeten especificar règles per a múltiples usuaris individuals. Les **ACLs** ho solucionen:
+### Limitació de Unix permissions estàndard
 
-### done.log: dev1 rw, grup r--
+Unix permissions permeten especificar tres actors: user (propietari), group, others. Si volem "dev1 pot escriure, dev2 pot llegir, dev3+dev4 poden llegir, ningú més" amb Unix permissions pur:
+- Establim `group::r--` → tothom al grup llegeix
+- No hi ha forma d'afegir "dev1 pot escriure" sense fer-lo propietari
+
+Les **ACLs** afegeixen entrades addicionals a la llista de control d'accés, una per usuari o grup:
 
 ```bash
-setfacl -m "g:greendevcorp:r--" /home/greendevcorp/done.log  # grup: lectura
-setfacl -m "u:dev1:rw-"         /home/greendevcorp/done.log  # dev1: lectura + escriptura
-```
+# done.log: dev1 rw, resta del grup r--
+setfacl -b /home/greendevcorp/done.log             # netejar ACLs existents
+setfacl -m "g:greendevcorp:r--" /home/greendevcorp/done.log
+setfacl -m "u:dev1:rw-" /home/greendevcorp/done.log
 
-Verificació:
-```bash
+# Verificar
 getfacl /home/greendevcorp/done.log
 ```
 
-### shared/: dev1+dev2 rwx, dev3+dev4 r-x
+### Bug POSIX ACL: `group::` vs `group:<name>`
 
-S'usen **default ACLs** per garantir que els fitxers nous dins de `shared/` heretin les mateixes regles:
+**Problema trobat durant la implementació:** Quan s'aplica `setfacl -b` i s'estableix `g:greendevcorp:r-x` per a `shared/`, el directori té `chmod 3770` (rwxrwx), de manera que l'entrada base `group::rwx` segueix present. En POSIX ACL, quan un usuari coincideix amb múltiples entrades de grup (group:: i group:greendevcorp:), el sistema aplica la **més permissiva**. Per tant dev3 (membre de greendevcorp = el grup propietari) obtenia `rwx` en lloc de `r-x`.
+
+**Solució**: Establir explícitament `group::r-x` per sobreescriure l'entrada base:
 
 ```bash
-setfacl -d -m "u:dev1:rwx" /home/greendevcorp/shared  # default heredat
-setfacl -d -m "u:dev2:rwx" /home/greendevcorp/shared
+setfacl -m "g::r-x"            /home/greendevcorp/shared  # override base
+setfacl -d -m "g::r-x"         /home/greendevcorp/shared  # default
+setfacl -m "g:greendevcorp:r-x"  /home/greendevcorp/shared
+setfacl -m "u:dev1:rwx"         /home/greendevcorp/shared
+setfacl -m "u:dev2:rwx"         /home/greendevcorp/shared
+```
+
+### ACLs per defecte (default ACLs)
+
+Les ACLs de directori no s'apliquen automàticament als fitxers nous que es creen dins. Per garantir que els fitxers nous heretin les mateixes regles, cal configurar **default ACLs** amb `-d`:
+
+```bash
 setfacl -d -m "g:greendevcorp:r-x" /home/greendevcorp/shared
+setfacl -d -m "u:dev1:rwx" /home/greendevcorp/shared
+setfacl -d -m "u:dev2:rwx" /home/greendevcorp/shared
 ```
 
 ---
@@ -75,36 +103,42 @@ setfacl -d -m "g:greendevcorp:r-x" /home/greendevcorp/shared
 
 Configurat a `/etc/security/limits.d/greendevcorp.conf`:
 
-| Límit | Soft | Hard | Propòsit |
-|-------|------|------|---------|
-| nproc | 100 | 200 | Evita fork bombs |
-| nofile | 1024 | 4096 | Fitxers oberts simultàniament |
-| memlock | 64 MB | 128 MB | Memòria bloquejada |
-| cpu | 60 min | 120 min | Temps de CPU |
+- **nproc**: Soft 100, Hard 200. Evita fork bombs (`:(){ :|:& };:`).
+- **nofile**: Soft 1024, Hard 4096. Límits als fitxers oberts simultàniament.
+- **memlock**: Soft 64 MB, Hard 128 MB. Límits per a memòria bloquejada (no paginable).
+- **cpu**: Soft 60 min, Hard 120 min. Minuts de CPU total per sessió.
 
-**Diferència soft vs hard:**
-- **Soft**: límit actiu per defecte; l'usuari el pot pujar fins al hard limit.
-- **Hard**: límit absolut; ni l'usuari ni els seus processos el poden superar.
+**Soft vs Hard:**
+- **Soft**: límit actiu per defecte. L'usuari el pot pujar fins al hard limit (sense privilegis).
+- **Hard**: límit absolut, immutable per l'usuari. Només root el pot modificar.
 
-Verificació per a un usuari:
+**Com funciona**: PAM (`pam_limits.so`) aplica els límits quan l'usuari fa login. Els limits s'hereten per tots els processos fills de la sessió.
+
 ```bash
-sudo -u dev1 bash -c 'ulimit -a'
+# Verificació
+sudo -u dev1 bash -l -c 'ulimit -a'         # tots els limits de dev1
+sudo -u dev1 bash -l -c 'ulimit -n'         # nofile soft limit
 ```
+
+**Limitació important**: els limits de PAM s'apliquen en el moment del **login**. Sessions ja actives no es veuen afectades fins al proper login.
 
 ---
 
 ## Entorn de shell compartit
 
-El fitxer `/etc/profile.d/greendevcorp.sh` s'aplica a tots els usuaris en cada login:
-
 ```bash
-alias ll='ls -la'
+# /etc/profile.d/greendevcorp.sh
+export PATH="$PATH:/home/greendevcorp/bin"
+alias ll='ls -la --color=auto'
 alias gs='git status'
-export PATH=$PATH:/home/greendevcorp/bin
+alias glog='git log --oneline --graph'
+export PS1="\u@\h [\$(date +%H:%M)] \w\$ "
 ```
 
-Verificació:
+`/etc/profile.d/` s'executa en cada login shell (bash, sh). Tots els usuaris del sistema hereten les variables definides aquí.
+
 ```bash
+# Verificar
 sudo -u dev1 bash -l -c 'echo $PATH'     # ha d'incloure /home/greendevcorp/bin
 sudo -u dev3 bash -l -c 'type ll'        # ha de trobar l'àlies
 ```
@@ -113,46 +147,51 @@ sudo -u dev3 bash -l -c 'type ll'        # ha de trobar l'àlies
 
 ## Scripts implementats
 
-| Script | Funció |
-|--------|--------|
-| `setup_users.sh` | Crea grup i usuaris amb contrasenyes aleatòries, força canvi al primer login |
-| `setup_directories.sh` | Crea l'estructura de directoris amb permisos correctes |
-| `setup_acl.sh` | Configura ACLs POSIX per a control d'accés fi |
-| `setup_pam_limits.sh` | Configura límits de recursos per grup via PAM |
-| `setup_environment.sh` | Crea el fitxer `/etc/profile.d/greendevcorp.sh` |
-| `verify_setup.sh` | Verifica tot: usuaris, permisos, ACLs, PAM limits, entorn |
+- **`setup_users.sh`**: Crea grup i usuaris amb passwords aleatoris (mitjançant `tr` llistant de `/dev/urandom`), i força el canvi al primer login.
+- **`setup_directories.sh`**: Crea estructura de directoris amb permisos pertinents com `setgid` i l'stiky bit.
+- **`setup_acl.sh`**: Configura ACLs de funcionalitat POSIX per certs arxius (`done.log`, `shared/` i `bin/`).
+- **`setup_pam_limits.sh`**: Configura límits establint contingut dins de `/etc/security/limits.d/greendevcorp.conf`.
+- **`setup_environment.sh`**: Prepara variables d'entorn i alias a `/etc/profile.d/greendevcorp.sh`.
+- **`verify_setup.sh`**: Realitza proves com l'accés real (per exemple `sudo -u dev2`) incloent anàlisi de límits PAM.
 
-**Ordre d'execució:**
+### Generació de passwords segures
+
 ```bash
-sudo ./setup_users.sh
-sudo ./setup_directories.sh
-sudo ./setup_acl.sh
-sudo ./setup_pam_limits.sh
-sudo ./setup_environment.sh
-sudo ./verify_setup.sh
+# Generació via /dev/urandom (font aleatòria del kernel)
+PASS=$(tr -dc 'A-Za-z0-9' < /dev/urandom | head -c 16 || true)
 ```
+
+El `|| true` evita un SIGPIPE: quan `head` tanca el pipe (després de 16 caràcters), `tr` rep el senyal de pipe trencat. Amb `set -euo pipefail`, aquest error sense `|| true` mata l'script.
+
+Les passwords es mostren per pantalla un cop creades i es força canvi en el primer login amb `chage -d 0`. **Mai es guarden en Git**.
+
+### ACL base de grup vs. regla de permís més permissiu
+
+**Anàlisi d'Error Evitat**: Als inicis de la configuració de `shared/`, usàvem `chmod 3770` combinat amb directives base per als developers secundaris. En ACL POSIX, el problema radica que quan un usuari coincideix amb múltiples permisos (és dir, l'ACL nominal de dev2 vs el grup Unix al directori), POSIX aplica sistemàticament la regla *més permissiva* sense que el propietari estigui assabentat. Això causava que "dev3" obtingués escriptura si el grup `greendevcorp` sencer la tenia establerta a la base nativa `g::rwx`, anulant totalment l'ACL `r-x` teòric d'aquell usuari.
+
+**Solució Adoptada**: Ocultarem la potència d'extracció accidental aplicant programàticament i expressament un retall sobre l'entrada base Unix amb ACL: `setfacl -m "g::r-x"`. En limitar completament això a lectura pel macro-grup, deixem finalment que l'únic individu que aconsegueixi el lliure accés amb Write siguin de facto (`u:dev1,dev2`) per un ACL atatorgat especial i directe.
 
 ---
 
 ## Troubleshooting: "Un usuari no pot accedir a un fitxer"
 
 ```bash
-# 1. Identificar usuari i fitxer
-id dev3                          # veure grups de l'usuari
+# PASSO 1: Identificar usuari, fitxer, i context
+id dev3                                              # grups de l'usuari
+ls -la /home/greendevcorp/done.log                   # permisos Unix
 
-# 2. Comprovar permisos Unix
-ls -la /home/greendevcorp/done.log
+# PASSO 2: Comprovar ACLs
+getfacl /home/greendevcorp/done.log                  # llista completa de regles
 
-# 3. Comprovar ACLs
-getfacl /home/greendevcorp/done.log
-
-# 4. Provar l'accés directament
-sudo -u dev3 cat /home/greendevcorp/done.log    # ha de funcionar
+# PASSO 3: Provar l'accés com a l'usuari
+sudo -u dev3 cat /home/greendevcorp/done.log         # ha de funcionar
 sudo -u dev3 bash -c 'echo test >> /home/greendevcorp/done.log'  # ha de fallar
 
-# 5. Si les ACLs semblen correctes:
-#    - Verificar que el filesystem suporta ACLs (mount | grep acl)
-#    - Verificar que l'usuari és al grup correcte (id dev3)
+# PASSO 4: Verificar suport d'ACLs al sistema de fitxers
+mount | grep -E "(acl|/home)"          # ha de mostrar "acl" o bé ext4 (suporta ACLs per defecte)
+
+# PASSO 5: Diagnosi de PAM limits
+sudo -u dev3 bash -l -c 'ulimit -n'   # fitxers oberts (ha de ser ≤ 4096)
 ```
 
 ---
@@ -161,13 +200,25 @@ sudo -u dev3 bash -c 'echo test >> /home/greendevcorp/done.log'  # ha de fallar
 
 **Si un fitxer és en un directori compartit (owned by dev1), com el llegeixen tots?**
 
-Cal que els permisos del fitxer permetin almenys `r--` per al grup `greendevcorp`. Amb `chmod 640` i `chown dev1:greendevcorp` queda correcte. Per a casos més complexos (accés per usuari individual), s'usen ACLs.
+`chmod 640 dev1:greendevcorp` permet lectura al grup `greendevcorp`. Com tot el directori té setgid, nous fitxers hereten el grup automàticament. Per casos on cal que un usuari específic tingui permisos diferents al grup general, s'usa ACL.
 
 **Diferència setgid en directori vs fitxer?**
 
-- **Directori**: els fitxers nous hereten el grup del directori → perfecte per a `shared/`.
-- **Fitxer executable**: s'executa amb els permisos del grup propietari → perillós, evitar tret de casos molt específics (p.ex. `passwd` usa setuid).
+Directori: facilita la col·laboració, els fitxers nous hereten el grup → segur. Fitxer executable: executa amb privilegis del grup → perillós, pot permetre escalada de privilegis si no es controla molt bé.
 
-**Com verificar que el model de permisos funciona?**
+**Si les permissions estan mal configurades i un usuari no pot accedir al fitxer que necessita, com es fa debug?**
 
-El script `verify_setup.sh` fa proves reals (`sudo -u dev2 bash -c "echo test >> done.log"`) i comprova que fallen correctament. No n'hi ha prou amb mirar `ls -la` — cal provar l'accés com a l'usuari real.
+1. `id <user>` → verificar grup membership
+2. `ls -la <fitxer>` → veure permisos Unix
+3. `getfacl <fitxer>` → veure ACLs completes
+4. `sudo -u <user> cat <fitxer>` → provar directament
+
+**Com verificar que el model de permisos enforça correctament la política de seguretat?**
+
+El `verify_setup.sh` fa proves reals (`sudo -u dev2 bash -c 'echo test >> done.log'`) i verifica que fallen. `ls -la` no és suficient — cal provar l'accés com a l'usuari real. Els bits i ACLs poden semblar correctes i tot i així haver-hi un edge case (com el bug `group::` descrit).
+
+---
+
+## Reflexió
+
+La lliçó principal: Unix permissions estàndard (rwx per user/group/other) és un model intentionalment simple. Quan els requisits superen 3 actors (tots els membres del grup igual d'importants), cal ACLs. I fins i tot les ACLs amaguen subtileses (ordre d'evaluació, precedència d'entrades) que cal entendre per no tenir falsos sentits de seguretat.

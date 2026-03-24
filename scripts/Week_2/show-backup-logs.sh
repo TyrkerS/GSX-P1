@@ -1,6 +1,6 @@
 #!/bin/bash
-# show-backup-logs.sh — Visualitza els logs del servei de backup
-# Mostra: logs de journald, última execució del timer, següent backup programat, estadístiques de backup
+# show-backup-logs.sh — Display recent backup service logs from journald.
+# Usage: ./show-backup-logs.sh [--lines 30]
 set -euo pipefail
 
 LINES="${1:-30}"
@@ -10,7 +10,7 @@ echo ""
 journalctl -u p1-backup.service -n "$LINES" --no-pager
 
 echo ""
-echo "=== LAST BACKUP TIMER EXECUTION ==="
+echo "=== LAST BACKUP TIMER RUN ==="
 systemctl status p1-backup.timer --no-pager -l || true
 
 echo ""
